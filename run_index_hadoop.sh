@@ -76,7 +76,7 @@ fi
 if [ -n "$REUSE_SPLIT_FILE" ]; then
     SPLIT_FILE="$REUSE_SPLIT_FILE"
 else
-    # mapreduce.output.fileoutputformat.compress=true
+    # mapreduce.map.output.compress=true
     #    must compress task output to avoid that the single reducer node fails with a full disk
     #    anyway, it may require 60 GB of local disk space on the reducer node
     # mapreduce.map.memory.mb=640
@@ -91,7 +91,7 @@ else
            --jobconf "mapreduce.map.java.opts=-Xmx512m" \
            --jobconf "mapreduce.reduce.memory.mb=1024" \
            --jobconf "mapreduce.reduce.java.opts=-Xmx512m" \
-           --jobconf "mapreduce.output.fileoutputformat.compress=true" \
+           --jobconf "mapreduce.map.output.compress=true" \
            -r hadoop $WARC_CDX
     mv splits.seq $(basename s3${SPLIT_FILE#s3a})
 
