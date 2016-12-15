@@ -83,6 +83,10 @@ class IndexWARCJob(MRJob):
     def _load_and_index(self, warc_path):
         warckey = self.warc_bucket.get_key(warc_path)
 
+        if warckey is None:
+            sys.stderr.write('WARC not found: {}\n'.format(warc_path))
+            return
+
         cdx_path = self._conv_warc_to_cdx_path(warc_path)
 
         if self.options.skip_existing:
