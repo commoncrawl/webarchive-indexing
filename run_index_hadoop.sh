@@ -103,7 +103,7 @@ else
            --jobconf "mapreduce.reduce.memory.mb=1024" \
            --jobconf "mapreduce.reduce.java.opts=-Xmx512m" \
            --jobconf "mapreduce.map.output.compress=true" \
-           --jobconf "mapreduce.output.fileoutputformat.compress=false \
+           --jobconf "mapreduce.output.fileoutputformat.compress=false" \
            -r hadoop $WARC_CDX
 
 	# in case, the sequence file wasn't written:
