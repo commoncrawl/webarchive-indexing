@@ -79,6 +79,7 @@ fi
 
 
 if [ -n "$REUSE_SPLIT_FILE" ]; then
+    echo "Reusing SPLIT_FILE $REUSE_SPLIT_FILE"
     SPLIT_FILE="$REUSE_SPLIT_FILE"
 else
     # mapreduce.map.output.compress=true
@@ -86,6 +87,10 @@ else
     #    anyway, it may require 60 GB of local disk space on the reducer node
     # mapreduce.map.memory.mb=640
     #    mappers read only small cdx files: minimal memory requirements
+    # mapreduce.reduce.memory.mb (use default)
+    #    reducer needs enough memory to hold all data during the shuffle phase
+    #      --jobconf "mapreduce.reduce.memory.mb=2730" \
+    #      --jobconf "mapreduce.reduce.java.opts=-Xmx2252m" \
     # mapreduce.output.fileoutputformat.compress=false
     #    must not compress output, even if this is the default, because it may not
     #    be readable from Python via seqfileutils.py. Alternatively, compress
@@ -100,8 +105,6 @@ else
            --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
            --jobconf "mapreduce.map.memory.mb=640" \
            --jobconf "mapreduce.map.java.opts=-Xmx512m" \
-           --jobconf "mapreduce.reduce.memory.mb=1024" \
-           --jobconf "mapreduce.reduce.java.opts=-Xmx512m" \
            --jobconf "mapreduce.map.output.compress=true" \
            --jobconf "mapreduce.output.fileoutputformat.compress=false" \
            -r hadoop $WARC_CDX
