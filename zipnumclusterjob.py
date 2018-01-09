@@ -36,24 +36,24 @@ class ZipNumClusterJob(MRJob):
         """Custom command line options for indexing"""
         super(ZipNumClusterJob, self).configure_options()
 
-        self.add_passthrough_option('--numlines', dest='numlines',
-                                    type=int,
-                                    default=3000,
-                                    help='Number of lines per gzipped block')
+        self.add_passthru_arg('--numlines', dest='numlines',
+                              type=int,
+                              default=3000,
+                              help='Number of lines per gzipped block')
 
-        self.add_passthrough_option('--splitfile', dest='splitfile',
-                                    help='Split file to use for CDX shard split')
+        self.add_passthru_arg('--splitfile', dest='splitfile',
+                              help='Split file to use for CDX shard split')
 
-        self.add_passthrough_option('--convert', dest='convert',
-                                    action='store_true',
-                                    default=False,
-                                    help='Convert CDX through _convert_line() function')
+        self.add_passthru_arg('--convert', dest='convert',
+                              action='store_true',
+                              default=False,
+                              help='Convert CDX through _convert_line() function')
 
-        self.add_passthrough_option('--shards', dest='shards',
-                                    type=int,
-                                    help='Num ZipNum Shards to create, ' +
-                                         '= num of entries in splits + 1' +
-                                         '= num of reducers used')
+        self.add_passthru_arg('--shards', dest='shards',
+                              type=int,
+                              help='Num ZipNum Shards to create, ' +
+                                   '= num of entries in splits + 1' +
+                                   '= num of reducers used')
 
     def jobconf(self):
         orig_jobconf = super(ZipNumClusterJob, self).jobconf()

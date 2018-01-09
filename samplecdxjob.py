@@ -34,21 +34,21 @@ class SampleCDXJob(MRJob):
         """Custom command line options for indexing"""
         super(SampleCDXJob, self).configure_options()
 
-        self.add_passthrough_option('--shards', dest='shards',
-                                    type=int,
-                                    default=300,
-                                    help='Number of shards in output ' +
-                                         '(create shards-1 splits')
+        self.add_passthru_arg('--shards', dest='shards',
+                              type=int,
+                              default=300,
+                              help='Number of shards in output ' +
+                                   '(create shards-1 splits')
 
-        self.add_passthrough_option('--scaler', dest='scaler',
-                                    type=int,
-                                    default=100,
-                                    help='Scaler for sample size: ' +
-                                         'Sample size = shards * scaler')
+        self.add_passthru_arg('--scaler', dest='scaler',
+                              type=int,
+                              default=100,
+                              help='Scaler for sample size: ' +
+                                   'Sample size = shards * scaler')
 
-        self.add_passthrough_option('--splitfile', dest='splitfile',
-                                    help='Split file output dest, ' +
-                                         'will contain shards-1 splits')
+        self.add_passthru_arg('--splitfile', dest='splitfile',
+                              help='Split file output dest, ' +
+                                   'will contain shards-1 splits')
 
     def mapper_init(self):
         self.N = self.options.shards * self.options.scaler

@@ -36,17 +36,17 @@ class IndexWARCJob(MRJob):
         """Custom command line options for indexing"""
         super(IndexWARCJob, self).configure_options()
 
-        self.add_passthrough_option('--warc_bucket', dest='warc_bucket',
-                                    default='commoncrawl',
-                                    help='source bucket for warc paths, if input is a relative path (S3 Only)')
+        self.add_passthru_arg('--warc_bucket', dest='warc_bucket',
+                              default='commoncrawl',
+                              help='source bucket for warc paths, if input is a relative path (S3 Only)')
 
-        self.add_passthrough_option('--cdx_bucket', dest='cdx_bucket',
-                                    default='my_cdx_bucket',
-                                    help='destination bucket for cdx (S3 Only)')
+        self.add_passthru_arg('--cdx_bucket', dest='cdx_bucket',
+                              default='my_cdx_bucket',
+                              help='destination bucket for cdx (S3 Only)')
 
-        self.add_passthrough_option('--skip-existing', dest='skip_existing', action='store_true',
-                                    help='skip processing files that already have CDX',
-                                    default=True)
+        self.add_passthru_arg('--skip-existing', dest='skip_existing', action='store_true',
+                              help='skip processing files that already have CDX',
+                              default=True)
 
     def mapper_init(self):
         # Note: this assumes that credentials are set via
