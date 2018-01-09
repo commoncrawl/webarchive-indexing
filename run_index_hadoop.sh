@@ -56,6 +56,13 @@ export ZIPNUM_CLUSTER_DIR="s3a://commoncrawl/cc-index/collections/CC-MAIN-$YEARW
 # SPLIT_FILE could be reused from previous crawl with similar distribution of URLs, see REUSE_SPLIT_FILE
 export SPLIT_FILE="s3a://cc-cdx-index/${YEARWEEK}_splits.seq"
 
+# configure S3 buffer directory
+if [ -n "$S3_LOCAL_TEMP_DIR" ]; then
+	S3_LOCAL_TEMP_DIR="--s3_local_temp_dir=$S3_LOCAL_TEMP_DIR"
+else
+	S3_LOCAL_TEMP_DIR=""
+fi
+
 
 export LC_ALL=C
 
@@ -74,6 +81,7 @@ if [ -n "$WARC_MANIFEST" ]; then
        -r hadoop \
        --jobconf "mapreduce.map.memory.mb=800" \
        --jobconf "mapreduce.map.java.opts=-Xmx512m" \
+       $S3_LOCAL_TEMP_DIR \
        $WARC_MANIFEST
 fi
 
@@ -94,7 +102,7 @@ else
     # mapreduce.output.fileoutputformat.compress=false
     #    must not compress output, even if this is the default, because it may not
     #    be readable from Python via seqfileutils.py. Alternatively, compress
-    #    and decompress the data explicitely.
+    #    and decompress the data explicitly.
     test -e splits.txt && rm splits.txt
     test -e splits.seq && rm splits.seq
     python dosample.py \
