@@ -123,11 +123,11 @@ else
 
     mv splits.seq $(basename s3${SPLIT_FILE#s3a})
 
-    if s3cmd info s3${SPLIT_FILE#s3a}; then
+    if aws s3 ls s3${SPLIT_FILE#s3a}; then
         echo "Ok, split file was upload"
     else
         echo "Uploading split file ..."
-        s3cmd put $(basename s3${SPLIT_FILE#s3a}) s3${SPLIT_FILE#s3a}
+        aws s3 cp $(basename s3${SPLIT_FILE#s3a}) s3${SPLIT_FILE#s3a}
     fi
 fi
 
@@ -143,5 +143,6 @@ python zipnumclusterjob.py \
        --jobconf "mapreduce.map.java.opts=-Xmx512m" \
        --jobconf "mapreduce.reduce.memory.mb=1536" \
        --jobconf "mapreduce.reduce.java.opts=-Xmx1024m" \
+       --jobconf "fs.s3a.acl.default=PublicRead" \
        -r hadoop $WARC_CDX
 
