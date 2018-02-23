@@ -11,7 +11,7 @@ from mrjob.protocol import RawValueProtocol
 from mrjob.util import log_to_stream
 
 from tempfile import TemporaryFile
-from pywb.warc.cdxindexer import write_cdx_index
+from pywb.indexer.cdxindexer import write_cdx_index
 from gzip import GzipFile
 
 
@@ -25,7 +25,7 @@ class IndexWARCJob(MRJob):
     """ This job receives as input a manifest of WARC/ARC files and produces
     a CDX index per file
 
-    The pywb.warc.cdxindexer is used to create the index, with a fixed set of options
+    The pywb.indexer.cdxindexer is used to create the index, with a fixed set of options
     TODO: add way to customized indexing options.
 
     """

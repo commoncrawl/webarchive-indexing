@@ -76,7 +76,7 @@ and output directory of `/cdx/`, the following will be created:
 
 This is a map only job, and a single mapper is created per input file by default.
 
-The `pywb.warc.cdxindexer.write_cdx_index`, the same used by the pywb `cdx-indexer` app is used to create the index.
+The `pywb.indexer.cdxindexer.write_cdx_index`, the same used by the pywb `cdx-indexer` app is used to create the index.
 Refer to `cdx-indexer -h` for list of possible options.
 
 ### Sampling CDXs to Create Split File ###
