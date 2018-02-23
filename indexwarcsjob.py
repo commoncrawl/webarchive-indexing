@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from datetime import datetime
@@ -7,10 +8,16 @@ import botocore
 
 from mrjob.job import MRJob
 from mrjob.protocol import RawValueProtocol
+from mrjob.util import log_to_stream
 
 from tempfile import TemporaryFile
 from pywb.warc.cdxindexer import write_cdx_index
 from gzip import GzipFile
+
+
+LOG = logging.getLogger('IndexWARCJob')
+log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+              name='IndexWARCJob')
 
 
 #=============================================================================
@@ -67,15 +74,15 @@ class IndexWARCJob(MRJob):
         try:
             s3client.head_bucket(Bucket=self.options.warc_bucket)
         except botocore.exceptions.ClientError as e:
-            self._log('Failed to access bucket {}: {}'.format(
-                self.options.warc_bucket, e), 'ERROR')
+            LOG.error('Failed to access bucket {}: {}'.format(
+                self.options.warc_bucket, e))
             return
 
         try:
             s3client.head_bucket(Bucket=self.options.cdx_bucket)
         except botocore.exceptions.ClientError as e:
-            self._log('Failed to access bucket {}: {}'.format(
-                self.options.cdx_bucket, e), 'ERROR')
+            LOG.error('Failed to access bucket {}: {}'.format(
+                self.options.cdx_bucket, e))
             return
 
         self.index_options = {
@@ -90,12 +97,8 @@ class IndexWARCJob(MRJob):
         try:
             self._load_and_index(warc_path)
         except Exception as exc:
-            self._log('Failed to index ' + warc_path, 'ERROR')
+            LOG.error('Failed to index ' + warc_path)
             raise
-
-    def _log(self, msg, level='INFO'):
-        dt = datetime.now()
-        sys.stderr.write('{:%y/%m/%d %H:%M:%S} {} {}\n'.format(dt, level, msg))
 
     def _conv_warc_to_cdx_path(self, warc_path):
         # set cdx path
@@ -107,14 +110,14 @@ class IndexWARCJob(MRJob):
 
         cdx_path = self._conv_warc_to_cdx_path(warc_path)
 
-        self._log('Indexing WARC: ' + warc_path)
+        LOG.info('Indexing WARC: ' + warc_path)
         s3client = boto3.client('s3', config=self.boto_config)
 
         if self.options.skip_existing:
             try:
                 s3client.head_object(Bucket=self.options.cdx_bucket,
                                           Key=cdx_path)
-                self._log('Already Exists: ' + cdx_path)
+                LOG.info('Already Exists: ' + cdx_path)
                 return
             except botocore.client.ClientError as exception:
                 pass # ok, not found
@@ -123,20 +126,20 @@ class IndexWARCJob(MRJob):
             s3client.head_object(Bucket=self.options.warc_bucket,
                                       Key=warc_path)
         except botocore.client.ClientError as exception:
-            self._log('WARC not found: ' + warc_path, 'ERROR')
+            LOG.error('WARC not found: ' + warc_path)
             return
 
         with TemporaryFile(mode='w+b',
                            dir=self.options.s3_local_temp_dir) as warctemp:
-            self._log('Fetching WARC: ' + warc_path)
+            LOG.info('Fetching WARC: ' + warc_path)
             try:
                 s3client.download_fileobj(self.options.warc_bucket, warc_path, warctemp)
             except botocore.client.ClientError as exception:
-                self._log('Failed to download {}: {}'.format(warc_path, exception), 'ERROR')
+                LOG.error('Failed to download {}: {}'.format(warc_path, exception))
                 return
 
             warctemp.seek(0)
-            self._log('Successfully fetched WARC: ' + warc_path)
+            LOG.info('Successfully fetched WARC: ' + warc_path)
 
             with TemporaryFile(mode='w+b',
                                dir=self.options.s3_local_temp_dir) as cdxtemp:
@@ -147,13 +150,13 @@ class IndexWARCJob(MRJob):
                 # Upload temp
                 cdxtemp.flush()
                 cdxtemp.seek(0)
-                self._log('Uploading CDX: ' + cdx_path)
+                LOG.info('Uploading CDX: ' + cdx_path)
                 try:
                     s3client.upload_fileobj(cdxtemp, self.options.cdx_bucket, cdx_path)
                 except botocore.client.ClientError as exception:
-                    self._log('Failed to upload {}: {}'.format(cdx_path, exception), 'ERROR')
+                    LOG.error('Failed to upload {}: {}'.format(cdx_path, exception))
                     return
-                self._log('Successfully uploaded CDX: ' + cdx_path)
+                LOG.info('Successfully uploaded CDX: ' + cdx_path)
 
 
 if __name__ == "__main__":

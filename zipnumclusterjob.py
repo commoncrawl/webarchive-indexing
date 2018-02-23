@@ -1,3 +1,4 @@
+import logging
 import shutil
 import sys
 import os
@@ -11,6 +12,11 @@ from tempfile import TemporaryFile
 from mrjob.job import MRJob
 from mrjob.conf import combine_dicts
 from mrjob.protocol import RawProtocol, RawValueProtocol
+from mrjob.util import log_to_stream
+
+
+LOG = logging.getLogger('ZipNumClusterJob')
+log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",name='ZipNumClusterJob')
 
 
 #=============================================================================
@@ -125,20 +131,29 @@ class ZipNumClusterJob(MRJob):
 
     def _do_upload(self):
         self.gzip_temp.flush()
+        self.gzip_temp.seek(0)
         #TODO: move to generalized put() function
         if self.output_dir.startswith('s3://') or self.output_dir.startswith('s3a://'):
-            import boto
-            conn = boto.connect_s3()
+            import boto3
+            import botocore
+            boto_config = botocore.client.Config(
+                read_timeout=180,
+                retries={'max_attempts' : 20})
+            s3client = boto3.client('s3', config=boto_config)
+
             parts = urlparse.urlsplit(self.output_dir)
+            s3key = parts.path.strip('/') + '/' + self.part_name
+            s3url = parts.scheme + '://' + parts.netloc + '/' + s3key
 
-            bucket = conn.lookup(parts.netloc)
-
-            cdxkey = bucket.new_key(parts.path + '/' + self.part_name)
-            cdxkey.set_contents_from_file(self.gzip_temp, rewind=True)
+            LOG.info('Uploading index to ' + s3url)
+            try:
+                s3client.upload_fileobj(self.gzip_temp, parts.netloc, s3key)
+            except botocore.client.ClientError as exception:
+                LOG.error('Failed to upload {}: {}'.format(s3url, exception))
+                return
+            LOG.info('Successfully uploaded index file: ' + s3url)
         else:
             path = os.path.join(self.output_dir, self.part_name)
-
-            self.gzip_temp.seek(0)
 
             with open(path, 'w+b') as target:
                 shutil.copyfileobj(self.gzip_temp, target)
