@@ -35,9 +35,20 @@ LC_ALL=C sort -c ./cluster.idx
 #rm ./part-00*
 aws s3 cp ./cluster.idx s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cluster.idx --acl public-read
 
+# remove obsolete data from bucket
+#  - map-reduce _SUCCESS file/marker
+aws s3 rm s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/_SUCCESS
+#  - part-00* files concatenated to cluster.idx
+aws s3 rm --recursive s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ --exclude "*" --include "part-00*"
+
+## TODO:
+##   check why setting public-read permissions via
+##     --jobconf "fs.s3a.acl.default=PublicRead"
+##   does not work?
+##
 ## set public permissions where needed (technically only the cdx-* need to be public)
 ## this should be already done, if not run:
-#     s3cmd setacl s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ --acl-public --recursive --exclude='*' --include='cdx-*.gz' --include='cluster.idx' --include='metadata.yaml'
+s3cmd setacl s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/ --acl-public --recursive --exclude='*' --include='cdx-*.gz' --include='cluster.idx' --include='metadata.yaml'
 ## or:
 # aws s3 cp \
 #     --exclude='*' \
@@ -45,15 +56,9 @@ aws s3 cp ./cluster.idx s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/
 #     --include='cluster.idx' \
 #     --include='metadata.yaml' \
 #     --recursive \
-#     s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ \
-#     s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ \
+#     s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/ \
+#     s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/ \
 #     --acl public-read
-
-# remove obsolete data from bucket
-#  - map-reduce _SUCCESS file/marker
-aws s3 rm s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/_SUCCESS
-#  - part-00* files concatenated to cluster.idx
-aws s3 rm --recursive s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ --exclude "*" --include "part-00*"
 
 # make *.cdx.gz files (to be deleted later) private
 #s3cmd setacl s3://commoncrawl/cc-index/CC-MAIN-$YEARWEEK/segments/ --acl-private --recursive

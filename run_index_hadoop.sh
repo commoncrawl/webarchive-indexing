@@ -45,7 +45,7 @@ echo
 
 # glob pattern to match all CDX files generated in step 1 (indexwarcsjob.py)
 # (filesystem protocol must be supported by the used Hadoop version)
-export WARC_CDX="s3a://commoncrawl/cc-index/cdx/CC-MAIN-$YEARWEEK/segments/*/*/*.cdx.gz"
+export WARC_CDX="s3a://commoncrawl-index-temp/CC-MAIN-$YEARWEEK/cdx/segments/*/*/*.cdx.gz"
 
 # AWS S3 bucket to hold CDX files
 export WARC_CDX_BUCKET="commoncrawl"
@@ -54,7 +54,7 @@ export WARC_CDX_BUCKET="commoncrawl"
 export ZIPNUM_CLUSTER_DIR="s3a://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/"
 
 # SPLIT_FILE could be reused from previous crawl with similar distribution of URLs, see REUSE_SPLIT_FILE
-export SPLIT_FILE="s3a://cc-cdx-index/${YEARWEEK}_splits.seq"
+export SPLIT_FILE="s3a://commoncrawl-index-temp/CC-MAIN-${YEARWEEK}/splits.seq"
 
 # configure S3 buffer directory
 if [ -n "$S3_LOCAL_TEMP_DIR" ]; then
@@ -129,13 +129,13 @@ else
 	# 3. verify the sequence file
 	#      hadoop fs -text file:$PWD/splits.seq | less
 
-    mv splits.seq $(basename s3${SPLIT_FILE#s3a})
+    mv splits.seq CC-MAIN-${YEARWEEK}-splits.seq
 
     if aws s3 ls s3${SPLIT_FILE#s3a}; then
-        echo "Ok, split file was upload"
+        echo "Ok, split file has been upload"
     else
         echo "Uploading split file ..."
-        aws s3 cp $(basename s3${SPLIT_FILE#s3a}) s3${SPLIT_FILE#s3a}
+        aws s3 cp CC-MAIN-${YEARWEEK}-splits.seq s3${SPLIT_FILE#s3a}
     fi
 fi
 
