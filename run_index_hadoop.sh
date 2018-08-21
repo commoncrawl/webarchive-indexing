@@ -145,6 +145,7 @@ python zipnumclusterjob.py \
        --splitfile=$SPLIT_FILE \
        --output-dir="$ZIPNUM_CLUSTER_DIR" \
        --no-output \
+       --convert \
        --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
        --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
        --jobconf "mapreduce.map.memory.mb=640" \

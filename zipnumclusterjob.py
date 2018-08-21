@@ -7,6 +7,7 @@ import zlib
 import urlparse
 import json
 
+from collections import OrderedDict
 from tempfile import TemporaryFile
 
 from mrjob.job import MRJob
@@ -80,12 +81,33 @@ class ZipNumClusterJob(MRJob):
             yield line, ''
 
     def _convert_line(self, line):
-        key, ts, url, length, offset, warc = line.split(' ')
-        key = key.replace(')', ',)', 1)
-
-        vals = {'o': offset, 's': length, 'w': warc, 'u': url}
-
-        return key + ' ' + ts + ' ' + json.dumps(vals)
+        if not ', "status": "304",' in line:
+            return line
+        key, ts, json_string = line.split(' ', 2)
+        try:
+            data = json.loads(json_string, object_pairs_hook=OrderedDict)
+        except ValueError as e:
+            logging.error('Failed to parse json: {0} - {1}'.format(
+                e, json_string))
+            return line
+        if 'status' in data and data['status'] == '304':
+            data['mime'] = 'warc/revisit'
+            if 'digest' not in data:
+                # insert before "length"
+                item_list = []
+                item_list.append(data.popitem())
+                while item_list[0][0] != 'length':
+                    item_list.insert(0, data.popitem())
+                data['digest'] = '3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ'
+                for item in item_list:
+                    data[item[0]] = item[1]
+            elif data['digest'] == None:
+                data['digest'] = '3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ'
+            if 'mime-detected' in data:
+                del data['mime-detected']
+            return ' '.join([key, ts, json.dumps(data)])
+        else:
+            return line
 
     def _get_prop(self, proplist):
         for p in proplist:

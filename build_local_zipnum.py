@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 #=============================================================================
-def run_job(input_path, output_dir, shards, parallel, lines=None):
+def run_job(input_path, output_dir, shards, parallel, lines=None, convert=False):
     args = ['--no-output', '--output-dir', output_dir, '-r']
     if parallel:
         args.append('local')
@@ -22,6 +22,9 @@ def run_job(input_path, output_dir, shards, parallel, lines=None):
 
     if lines:
         args.append('--numlines=' + str(lines))
+
+    if convert:
+        args.append('--convert')
 
     if isinstance(input_path, list):
         args.extend(input_path)
@@ -84,6 +87,9 @@ def main():
     parser.add_argument('-p', '--parallel', action='store_true',
                         help='Run in parllel (multiple maps/reducer processes)')
 
+    parser.add_argument('--convert', action='store_true',
+                        help='Convert by calling _convert_line()')
+
     r = parser.parse_args()
 
     MRJobLauncher.set_up_logging(quiet=False,
@@ -94,7 +100,7 @@ def main():
     compat_log = logging.getLogger('mrjob.compat')
     compat_log.setLevel(logging.ERROR)
 
-    run_job(r.inputs, r.output, r.shards, r.parallel, r.numlines)
+    run_job(r.inputs, r.output, r.shards, r.parallel, r.numlines, r.convert)
     build_summary_and_loc(r.output)
 
 if __name__ == "__main__":
