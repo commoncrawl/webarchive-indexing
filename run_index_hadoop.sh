@@ -11,11 +11,14 @@ Create a Common Crawl index for a monthly crawl. All steps are run on Hadoop.
                              s3://commoncrawl/cc-index/collections/CC-MAIN-2016-44/...
 
   <path-to-warc-file-list>  list of WARC file objects to be indexed, e.g, the WARC list
-                               s3://commoncrawl/crawl-data/CC-MAIN-2016-44/warc.paths.gz
+                               s3://commoncrawl/crawl-data/CC-MAIN-2016-44/warc.paths
                          or any subset or union of multiple WARC lists (incl. robots.txt WARCs).
                          Paths in the list must be keys/objects in the Common Crawl bucket.
                          The path to the list must be a valid and complete HDFS or S3A URL,
                          e.g. hdfs://hdfs-master.example.com/user/hadoop-user/CC-MAIN-2016-44.paths
+                         The list must not be compressed to allow that the paths list is split into
+                         multiple tasks (see mapreduce.input.lineinputformat.linespermap).
+
                          The "index warcs" step is skipped if an empty string is passed as argument.
 
   <split_file>           Optional split file to be reused from previous crawl with similar distribution of URLs.
@@ -38,23 +41,25 @@ YEARWEEK="$1"
 WARC_MANIFEST="$2"
 REUSE_SPLIT_FILE="$3"
 
-echo "Generating cc-index for $YEARWEEK"
+CRAWL="CC-MAIN-$YEARWEEK"
+
+echo "Generating cc-index for $CRAWL"
 echo
 echo WARC_MANIFEST="$WARC_MANIFEST"
 echo
 
-# glob pattern to match all CDX files generated in step 1 (indexwarcsjob.py)
-# (filesystem protocol must be supported by the used Hadoop version)
-export WARC_CDX="s3a://commoncrawl-index-temp/CC-MAIN-$YEARWEEK/cdx/segments/*/*/*.cdx.gz"
+# final path to index files
+export ZIPNUM_CLUSTER_DIR="s3a://commoncrawl/cc-index/collections/$CRAWL/indexes/"
 
 # AWS S3 bucket to hold CDX files
-export WARC_CDX_BUCKET="commoncrawl"
+export WARC_CDX_BUCKET="commoncrawl-index-temp"
 
-# path to index files
-export ZIPNUM_CLUSTER_DIR="s3a://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/"
+# glob pattern to match all CDX files generated in step 1 (indexwarcsjob.py)
+# (filesystem protocol must be supported by the used Hadoop version)
+export WARC_CDX="s3a://$WARC_CDX_BUCKET/$CRAWL/cdx/segments/*/*/*.cdx.gz"
 
 # SPLIT_FILE could be reused from previous crawl with similar distribution of URLs, see REUSE_SPLIT_FILE
-export SPLIT_FILE="s3a://commoncrawl-index-temp/CC-MAIN-${YEARWEEK}/splits.seq"
+export SPLIT_FILE="s3a://$WARC_CDX_BUCKET/$CRAWL/splits.seq"
 
 # configure S3 buffer directory
 if [ -n "$S3_LOCAL_TEMP_DIR" ]; then
@@ -129,13 +134,13 @@ else
 	# 3. verify the sequence file
 	#      hadoop fs -text file:$PWD/splits.seq | less
 
-    mv splits.seq CC-MAIN-${YEARWEEK}-splits.seq
+    mv splits.seq ${CRAWL}-splits.seq
 
     if aws s3 ls s3${SPLIT_FILE#s3a}; then
         echo "Ok, split file has been upload"
     else
         echo "Uploading split file ..."
-        aws s3 cp CC-MAIN-${YEARWEEK}-splits.seq s3${SPLIT_FILE#s3a}
+        aws s3 cp ${CRAWL}-splits.seq s3${SPLIT_FILE#s3a}
     fi
 fi
 
