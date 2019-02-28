@@ -57,6 +57,11 @@ export WARC_CDX_BUCKET="commoncrawl-index-temp"
 # glob pattern to match all CDX files generated in step 1 (indexwarcsjob.py)
 # (filesystem protocol must be supported by the used Hadoop version)
 export WARC_CDX="s3a://$WARC_CDX_BUCKET/$CRAWL/cdx/segments/*/*/*.cdx.gz"
+export WARC_CDX_SAMPLE="$WARC_CDX"
+# if URLs are randomly distributed over WARC/CDX files,
+# a sample (20-30%) is enough to determine the splits of the final CDX shards
+# (simple approach: take 30% of segments)
+export WARC_CDX_SAMPLE="s3a://$WARC_CDX_BUCKET/$CRAWL/cdx/segments/*[358]/*/*.cdx.gz"
 
 # SPLIT_FILE could be reused from previous crawl with similar distribution of URLs, see REUSE_SPLIT_FILE
 export SPLIT_FILE="s3a://$WARC_CDX_BUCKET/$CRAWL/splits.seq"
@@ -120,7 +125,7 @@ else
            --jobconf "mapreduce.map.java.opts=-Xmx512m" \
            --jobconf "mapreduce.map.output.compress=true" \
            --jobconf "mapreduce.output.fileoutputformat.compress=false" \
-           -r hadoop $WARC_CDX
+           -r hadoop $WARC_CDX_SAMPLE
 
 	# in case, the sequence file wasn't written:
 	# 1. verify the content
@@ -137,7 +142,7 @@ else
     mv splits.seq ${CRAWL}-splits.seq
 
     if aws s3 ls s3${SPLIT_FILE#s3a}; then
-        echo "Ok, split file has been upload"
+        echo "Ok, split file has been uploaded"
     else
         echo "Uploading split file ..."
         aws s3 cp ${CRAWL}-splits.seq s3${SPLIT_FILE#s3a}

@@ -3,6 +3,11 @@ from heapq import heappush, heapreplace
 
 from mrjob.job import MRJob
 from mrjob.protocol import RawValueProtocol
+from mrjob.util import log_to_stream
+
+
+LOG = logging.getLogger('SampleCDXJob')
+log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",name='SampleCDXJob')
 
 
 #=============================================================================
