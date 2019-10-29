@@ -41,24 +41,16 @@ aws s3 rm s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/_SUCCE
 #  - part-00* files concatenated to cluster.idx
 aws s3 rm --recursive s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ --exclude "*" --include "part-00*"
 
+## set public read permissions
+##
 ## TODO:
 ##   check why setting public-read permissions via
 ##     --jobconf "fs.s3a.acl.default=PublicRead"
 ##   does not work?
 ##
-## set public permissions where needed (technically only the cdx-* need to be public)
-## this should be already done, if not run:
-s3cmd setacl s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/ --acl-public --recursive --exclude='*' --include='cdx-*.gz' --include='cluster.idx' --include='metadata.yaml'
-## or:
-# aws s3 cp \
-#     --exclude='*' \
-#     --include='cdx-*.gz' \
-#     --include='cluster.idx' \
-#     --include='metadata.yaml' \
-#     --recursive \
-#     s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/ \
-#     s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/ \
-#     --acl public-read
-
-# make *.cdx.gz files (to be deleted later) private
-#s3cmd setacl s3://commoncrawl/cc-index/CC-MAIN-$YEARWEEK/segments/ --acl-private --recursive
+for i in $(seq 0 299); do
+    aws s3api put-object-acl \
+        --acl public-read \
+        --bucket commoncrawl \
+        --key cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cdx-$(printf "%05i" $i).gz
+done
