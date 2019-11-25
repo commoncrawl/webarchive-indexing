@@ -1,4 +1,6 @@
+import copy
 import logging
+import re
 import sys
 
 from datetime import datetime
@@ -19,6 +21,71 @@ LOG = logging.getLogger('IndexWARCJob')
 log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
               name='IndexWARCJob')
 
+### work-around erroneous WARC-Date in robots.txt data, see
+###    https://github.com/commoncrawl/nutch/issues/14
+import pywb
+from warcio.timeutils import iso_date_to_timestamp
+
+def my_parse_warc_record(self, record):
+    """ Parse warc record
+    """
+
+    entry = self._create_index_entry(record.rec_type)
+
+    if record.rec_type == 'warcinfo':
+        entry['url'] = record.rec_headers.get_header('WARC-Filename')
+        entry['urlkey'] = entry['url']
+        entry['_warcinfo'] = record.raw_stream.read(record.length)
+        return entry
+
+    entry['url'] = record.rec_headers.get_header('WARC-Target-Uri')
+
+    # timestamp
+    try:
+        entry['timestamp'] = iso_date_to_timestamp(record.rec_headers.
+                                                   get_header('WARC-Date'))
+    except ValueError as e:
+        # fix use fallback timestamp
+        entry['timestamp'] = self.options.get('fallback_timestamp')
+
+    # mime
+    if record.rec_type == 'revisit':
+        entry['mime'] = 'warc/revisit'
+    elif self.options.get('minimal'):
+        entry['mime'] = '-'
+    else:
+        def_mime = '-' if record.rec_type == 'request' else 'unk'
+        entry.extract_mime(record.http_headers.
+                           get_header('Content-Type'),
+                           def_mime)
+        # detected mime from WARC-Identified-Payload-Type
+        entry['mime-detected'] = record.rec_headers.get_header(
+                                    'WARC-Identified-Payload-Type')
+
+    # status -- only for response records (by convention):
+    if record.rec_type == 'response' and not self.options.get('minimal'):
+        entry.extract_status(record.http_headers)
+    else:
+        entry['status'] = '-'
+
+    # digest
+    digest = record.rec_headers.get_header('WARC-Payload-Digest')
+    entry['digest'] = digest
+    if digest and digest.startswith('sha1:'):
+        entry['digest'] = digest[len('sha1:'):]
+
+    elif not entry.get('digest'):
+        entry['digest'] = '-'
+
+    # optional json metadata, if present
+    metadata = record.rec_headers.get_header('WARC-Json-Metadata')
+    if metadata:
+        entry['metadata'] = metadata
+
+    return entry
+
+pywb.indexer.archiveindexer.DefaultRecordParser.parse_warc_record = my_parse_warc_record
+### end work-around
 
 #=============================================================================
 class IndexWARCJob(MRJob):
@@ -40,7 +107,7 @@ class IndexWARCJob(MRJob):
                 'mapreduce.reduce.speculative': 'false',
                 'mapreduce.job.jvm.numtasks': '-1',
 
-                'mapreduce.input.lineinputformat.linespermap': 2,
+                'mapreduce.input.lineinputformat.linespermap': 50,
                 }
 
     def configure_options(self):
@@ -144,8 +211,12 @@ class IndexWARCJob(MRJob):
             with TemporaryFile(mode='w+b',
                                dir=self.options.s3_local_temp_dir) as cdxtemp:
                 with GzipFile(fileobj=cdxtemp, mode='w+b') as cdxfile:
+                    options = copy.deepcopy(self.index_options)
+                    m = re.compile('.*/CC-MAIN-(\d+)').match(warc_path)
+                    if m:
+                        options['fallback_timestamp'] = m.group(1)
                     # Index to temp
-                    write_cdx_index(cdxfile, warctemp, warc_path, **self.index_options)
+                    write_cdx_index(cdxfile, warctemp, warc_path, **options)
 
                 # Upload temp
                 cdxtemp.flush()
