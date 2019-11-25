@@ -61,6 +61,9 @@ class ZipNumClusterJob(MRJob):
                                    '= num of entries in splits + 1' +
                                    '= num of reducers used')
 
+        self.add_passthru_arg('--s3-upload-acl', dest='s3acl',
+                              help='S3 access permissions (ACL) to be applied to CDX files')
+
     def jobconf(self):
         orig_jobconf = super(ZipNumClusterJob, self).jobconf()
         custom_jobconf = {'mapreduce.job.reduces': self.options.shards,
@@ -140,6 +143,9 @@ class ZipNumClusterJob(MRJob):
                 read_timeout=180,
                 retries={'max_attempts' : 20})
             s3client = boto3.client('s3', config=boto_config)
+            s3args = None
+            if self.options.s3acl:
+                s3args = {'ACL': self.options.s3acl}
 
             parts = urlparse.urlsplit(self.output_dir)
             s3key = parts.path.strip('/') + '/' + self.part_name
@@ -147,7 +153,8 @@ class ZipNumClusterJob(MRJob):
 
             LOG.info('Uploading index to ' + s3url)
             try:
-                s3client.upload_fileobj(self.gzip_temp, parts.netloc, s3key)
+                s3client.upload_fileobj(self.gzip_temp, parts.netloc, s3key,
+                                        ExtraArgs=s3args)
             except botocore.client.ClientError as exception:
                 LOG.error('Failed to upload {}: {}'.format(s3url, exception))
                 return

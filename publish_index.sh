@@ -41,16 +41,3 @@ aws s3 rm s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/_SUCCE
 #  - part-00* files concatenated to cluster.idx
 aws s3 rm --recursive s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ --exclude "*" --include "part-00*"
 
-## set public read permissions
-##
-## TODO:
-##   check why setting public-read permissions via
-##     --jobconf "fs.s3a.acl.default=PublicRead"
-##   does not work?
-##
-for i in $(seq 0 299); do
-    aws s3api put-object-acl \
-        --acl public-read \
-        --bucket commoncrawl \
-        --key cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cdx-$(printf "%05i" $i).gz
-done

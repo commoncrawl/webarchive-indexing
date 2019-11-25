@@ -154,6 +154,7 @@ python zipnumclusterjob.py \
        --shards=300 \
        --splitfile=$SPLIT_FILE \
        --output-dir="$ZIPNUM_CLUSTER_DIR" \
+       --s3-upload-acl="public-read" \
        --no-output \
        --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
        --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
