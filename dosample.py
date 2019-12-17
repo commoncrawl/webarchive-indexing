@@ -21,7 +21,7 @@ def run_sample_job():
 
         # dump streaming output to file
         with open(SPL_FILE, 'wb') as fh:
-            for x in runner.stream_output():
+            for x in runner.cat_output():
                 fh.write(x)
             fh.close()
 

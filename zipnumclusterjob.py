@@ -38,9 +38,9 @@ class ZipNumClusterJob(MRJob):
                 'mapreduce.job.jvm.numtasks': '-1'
                }
 
-    def configure_options(self):
+    def configure_args(self):
         """Custom command line options for indexing"""
-        super(ZipNumClusterJob, self).configure_options()
+        super(ZipNumClusterJob, self).configure_args()
 
         self.add_passthru_arg('--numlines', dest='numlines',
                               type=int,

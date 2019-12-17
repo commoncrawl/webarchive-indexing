@@ -30,15 +30,15 @@ class SampleCDXJob(MRJob):
                 'mapreduce.job.jvm.numtasks': '-1',
 
                 # the output should not be compressed even if the default is to compress output,
-                # otherwise reading from MRJobRunner.stream_output() needs decompression on the fly
+                # otherwise reading from MRJobRunner.cat_output() needs decompression on the fly
                 'mapreduce.output.fileoutputformat.compress': 'false',
 
                 'mapreduce.job.reduces': '1'
                }
 
-    def configure_options(self):
+    def configure_args(self):
         """Custom command line options for indexing"""
-        super(SampleCDXJob, self).configure_options()
+        super(SampleCDXJob, self).configure_args()
 
         self.add_passthru_arg('--shards', dest='shards',
                               type=int,

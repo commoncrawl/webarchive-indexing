@@ -43,9 +43,9 @@ class IndexWARCJob(MRJob):
                 'mapreduce.input.lineinputformat.linespermap': 2,
                 }
 
-    def configure_options(self):
+    def configure_args(self):
         """Custom command line options for indexing"""
-        super(IndexWARCJob, self).configure_options()
+        super(IndexWARCJob, self).configure_args()
 
         self.add_passthru_arg('--warc_bucket', dest='warc_bucket',
                               default='commoncrawl',
