@@ -4,7 +4,7 @@ import sys
 import os
 
 import zlib
-import urlparse
+import urllib.parse
 import json
 
 from tempfile import TemporaryFile
@@ -147,7 +147,7 @@ class ZipNumClusterJob(MRJob):
             if self.options.s3acl:
                 s3args = {'ACL': self.options.s3acl}
 
-            parts = urlparse.urlsplit(self.output_dir)
+            parts = urllib.parse.urlsplit(self.output_dir)
             s3key = parts.path.strip('/') + '/' + self.part_name
             s3url = parts.scheme + '://' + parts.netloc + '/' + s3key
 
@@ -172,7 +172,7 @@ class ZipNumClusterJob(MRJob):
 
         offset = self.gzip_temp.tell()
 
-        buff = '\n'.join(self.curr_lines) + '\n'
+        buff = ('\n'.join(self.curr_lines) + '\n').encode('utf-8')
         self.curr_lines = []
 
         buff = z.compress(buff)
