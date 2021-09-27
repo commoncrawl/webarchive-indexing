@@ -2,7 +2,7 @@
 
 source ./index_env.sh
 
-python dosample.py \
+python3 dosample.py \
 --shards=300 \
 --splitfile=$SPLIT_FILE \
 --conf-path ./mrjob.conf \

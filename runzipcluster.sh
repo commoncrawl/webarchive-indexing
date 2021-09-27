@@ -2,7 +2,7 @@
 
 source ./index_env.sh
 
-python zipnumclusterjob.py \
+python3 zipnumclusterjob.py \
 --shards=300 \
 --splitfile=$SPLIT_FILE \
 --output-dir="$ZIPNUM_CLUSTER_DIR" \

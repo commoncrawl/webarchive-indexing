@@ -81,7 +81,7 @@ set -x
 
 
 if [ -n "$WARC_MANIFEST" ]; then
-    python indexwarcsjob.py \
+    python3 indexwarcsjob.py \
        --cdx_bucket=$WARC_CDX_BUCKET \
        --no-output \
        --cleanup NONE \
@@ -115,7 +115,7 @@ else
     #    and decompress the data explicitly.
     test -e splits.txt && rm splits.txt
     test -e splits.seq && rm splits.seq
-    python dosample.py \
+    python3 dosample.py \
            --verbose \
            --shards=300 \
            --splitfile=$SPLIT_FILE \
@@ -150,7 +150,7 @@ else
 fi
 
 
-python zipnumclusterjob.py \
+python3 zipnumclusterjob.py \
        --shards=300 \
        --splitfile=$SPLIT_FILE \
        --output-dir="$ZIPNUM_CLUSTER_DIR" \

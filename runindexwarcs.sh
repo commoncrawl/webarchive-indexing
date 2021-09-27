@@ -2,7 +2,7 @@
 
 source ./index_env.sh
 
-python indexwarcsjob.py \
+python3 indexwarcsjob.py \
 --conf-path ./mrjob.conf \
 --cdx_bucket=$WARC_CDX_BUCKET \
 --no-output \
