@@ -16,7 +16,8 @@ from mrjob.util import log_to_stream
 
 
 LOG = logging.getLogger('ZipNumClusterJob')
-log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",name='ZipNumClusterJob')
+log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+              name='ZipNumClusterJob')
 
 
 #=============================================================================

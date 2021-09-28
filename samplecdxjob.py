@@ -8,14 +8,15 @@ from mrjob.util import log_to_stream
 
 
 LOG = logging.getLogger('SampleCDXJob')
-log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",name='SampleCDXJob')
+log_to_stream(format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+              name='SampleCDXJob')
 
 
 #=============================================================================
 class SampleCDXJob(MRJob):
     """ Sample CDX key space using reservoir sampling
     MR algorithm adapted:
-    http://had00b.blogspot.com/2013/07/random-subset-in-mapreduce.html
+    https://had00b.blogspot.com/2013/07/random-subset-in-mapreduce.html
     """
 
     HADOOP_INPUT_FORMAT = 'org.apache.hadoop.mapred.lib.CombineTextInputFormat'

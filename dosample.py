@@ -1,15 +1,27 @@
-from samplecdxjob import SampleCDXJob
-from seqfileutils import make_text_null_seq
-
+import logging
+import os
 import sys
 import tempfile
-import os
+
+from mrjob.util import log_to_stream
+
+from samplecdxjob import SampleCDXJob
+from seqfileutils import make_text_null_seq
 
 SEQ_FILE = 'splits.seq'
 SPL_FILE = 'splits.txt'
 
+LOG = logging.getLogger('SampleCDXJob')
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
 def run_sample_job():
     job = SampleCDXJob(args=sys.argv[1:])
+
+    verbose = '--verbose' in sys.argv[1:]
+    log_to_stream(format=LOG_FORMAT, name='SampleCDXJob', debug=verbose)
+    log_to_stream(format=LOG_FORMAT, name='mrjob', debug=verbose)
+    log_to_stream(format=LOG_FORMAT, name='__main__', debug=verbose)
 
     with job.make_runner() as runner:
         runner.run()

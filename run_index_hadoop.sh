@@ -116,7 +116,6 @@ else
     test -e splits.txt && rm splits.txt
     test -e splits.seq && rm splits.seq
     python3 dosample.py \
-           --verbose \
            --shards=300 \
            --splitfile=$SPLIT_FILE \
            --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
