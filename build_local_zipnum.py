@@ -1,11 +1,13 @@
-import os
 import glob
-from argparse import ArgumentParser
-from zipnumclusterjob import ZipNumClusterJob
-from mrjob.launch import MRJobLauncher
 import logging
+import os
 import sys
 
+from argparse import ArgumentParser
+
+from mrjob.job import MRJob
+
+from zipnumclusterjob import ZipNumClusterJob
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +57,8 @@ def build_summary_and_loc(output_dir):
             with open(filein, 'r+b') as partfh:
                 for line in partfh:
                     line = line.rstrip()
-                    line += '\t' + str(count)
-                    fh.write(line + '\n')
+                    line += b'\t' + str(count).encode('utf-8')
+                    fh.write(line + b'\n')
                     count += 1
 
     # Write loc file
@@ -68,7 +70,7 @@ def build_summary_and_loc(output_dir):
     print('Building Loc File: ' + loc_file)
     with open(loc_file, 'w+b') as fh:
         for filename in inputs:
-            fh.write(os.path.basename(filename) + '\t' + filename + '\n')
+            fh.write((os.path.basename(filename) + '\t' + filename + '\n').encode('utf-8'))
 
 
 def main():
@@ -82,13 +84,13 @@ def main():
                         help='Number of lines per gzip block (default 3000)')
 
     parser.add_argument('-p', '--parallel', action='store_true',
-                        help='Run in parllel (multiple maps/reducer processes)')
+                        help='Run in parallel (multiple maps/reducer processes)')
 
     r = parser.parse_args()
 
-    MRJobLauncher.set_up_logging(quiet=False,
-                                 verbose=False,
-                                 stream=sys.stderr)
+    MRJob.set_up_logging(quiet=False,
+                         verbose=False,
+                         stream=sys.stderr)
 
     log.setLevel(logging.INFO)
     compat_log = logging.getLogger('mrjob.compat')
