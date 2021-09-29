@@ -89,8 +89,8 @@ if [ -n "$WARC_MANIFEST" ]; then
        --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
        --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
        -r hadoop \
-       --jobconf "mapreduce.map.memory.mb=800" \
-       --jobconf "mapreduce.map.java.opts=-Xmx512m" \
+       --jobconf "mapreduce.map.memory.mb=1600" \
+       --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
        $S3_LOCAL_TEMP_DIR \
        $WARC_MANIFEST
 fi
@@ -120,8 +120,8 @@ else
            --splitfile=$SPLIT_FILE \
            --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
            --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-           --jobconf "mapreduce.map.memory.mb=640" \
-           --jobconf "mapreduce.map.java.opts=-Xmx512m" \
+           --jobconf "mapreduce.map.memory.mb=1600" \
+           --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
            --jobconf "mapreduce.map.output.compress=true" \
            --jobconf "mapreduce.output.fileoutputformat.compress=false" \
            -r hadoop $WARC_CDX_SAMPLE
@@ -157,10 +157,10 @@ python3 zipnumclusterjob.py \
        --no-output \
        --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
        --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-       --jobconf "mapreduce.map.memory.mb=640" \
-       --jobconf "mapreduce.map.java.opts=-Xmx512m" \
-       --jobconf "mapreduce.reduce.memory.mb=1536" \
-       --jobconf "mapreduce.reduce.java.opts=-Xmx1024m" \
+       --jobconf "mapreduce.map.memory.mb=1600" \
+       --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
+       --jobconf "mapreduce.reduce.memory.mb=3072" \
+       --jobconf "mapreduce.reduce.java.opts=-Xmx2048m" \
        --jobconf "fs.s3a.acl.default=PublicRead" \
        -r hadoop $WARC_CDX
 
