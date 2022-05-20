@@ -23,7 +23,7 @@ if ! [ -e $YEARWEEK-metadata.yaml ]; then
 		exit 1
 	fi
 fi
-aws s3 cp $YEARWEEK-metadata.yaml s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/metadata.yaml --acl public-read
+aws s3 cp $YEARWEEK-metadata.yaml s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/metadata.yaml
 
 test -d cdx-$YEARWEEK || mkdir cdx-$YEARWEEK
 cd cdx-$YEARWEEK
@@ -33,7 +33,7 @@ aws s3 cp --recursive --exclude '*' --include 'part-*' s3://commoncrawl/cc-index
 cat part-* | awk '{printf "%s\t%s\n",$0,NR}' >cluster.idx
 LC_ALL=C sort -c ./cluster.idx
 #rm ./part-00*
-aws s3 cp ./cluster.idx s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cluster.idx --acl public-read
+aws s3 cp ./cluster.idx s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cluster.idx
 
 # remove obsolete data from bucket
 #  - map-reduce _SUCCESS file/marker

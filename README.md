@@ -11,7 +11,7 @@ These tools use the MRJob Python library for Hadoop/EMR, and are a pure-Python s
 
 To install [dependencies](#dependencies): `pip install -r requirements.txt`
 
-#### Remote - EMR/Hadoop
+### Remote - EMR/Hadoop
 
 *Note: At this time, the scripts have been tested with the Common Crawl data set on Apache Bigtop 1.5.0 and with Python 2.7 on CDH 6.3.2 and on EMR (AMI 3.9.0 + Hadoop 2.4.0).*
 
@@ -25,11 +25,16 @@ Requirements have to be installed on all nodes of the cluster. The script [boots
 
 The script [run_index_hadoop.sh](./run_index_hadoop.sh) runs all steps necessary to create the CDX index of a monthly Common Crawl.
 
-#### Local
+### Local
 
 No additional setup is necessary. See [building a local cluster](#building-a-local-cluster).
 
-### Tools Provided
+### S3 Read and Write Permissions
+
+Permissions to read and write from the involved locations on S3 need to be granted – in "remote" mode to all nodes of the cluster. This is best done by attaching IAM roles to the EC2 cluster instances, see [boto3 configuring credentials](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#configuring-credentials). In local mode, a credentials file or environment variables could be also an option.
+
+
+## Tools Provided
 
 This repository provides three Hadoop MapReduce jobs to create [a shared url index](#zipnum-sharded-cdx-cluster) from an input list of WARC/ARC files. This process can be split into three jobs.
 
@@ -44,7 +49,7 @@ If you have a small number of local cdx files, you also use these scripts to [bu
 [Additional background info on indexing and the formats used](#additional-info).
 
 
-## Indexing Individual ARC/WARCs to CDX Files ##
+### Indexing Individual ARC/WARCs to CDX Files ###
 
 *Note: If you already have .cdx files for each of your WARC/ARCS, you may skip this step*
 

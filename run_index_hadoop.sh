@@ -24,15 +24,7 @@ Create a Common Crawl index for a monthly crawl. All steps are run on Hadoop.
   <split_file>           Optional split file to be reused from previous crawl with similar distribution of URLs.
                          If not given, splits are calculated and saved on the default split file path.
 
-Environment variables depend upon:
-  AWS_ACCESS_KEY_ID      - AWS credentials used by Boto to access the bucket (read and write)
-  AWS_SECRET_ACCESS_KEY
 EOF
-    exit 1
-fi
-
-if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-    echo "AWS credentials must passed to Boto via environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY!"
     exit 1
 fi
 
@@ -86,8 +78,6 @@ if [ -n "$WARC_MANIFEST" ]; then
        --no-output \
        --cleanup NONE \
        --skip-existing \
-       --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-       --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
        -r hadoop \
        --jobconf "mapreduce.map.memory.mb=1600" \
        --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
@@ -118,8 +108,6 @@ else
     python3 dosample.py \
            --shards=300 \
            --splitfile=$SPLIT_FILE \
-           --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-           --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
            --jobconf "mapreduce.map.memory.mb=1600" \
            --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
            --jobconf "mapreduce.map.output.compress=true" \
@@ -153,14 +141,10 @@ python3 zipnumclusterjob.py \
        --shards=300 \
        --splitfile=$SPLIT_FILE \
        --output-dir="$ZIPNUM_CLUSTER_DIR" \
-       --s3-upload-acl="public-read" \
        --no-output \
-       --cmdenv AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-       --cmdenv AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
        --jobconf "mapreduce.map.memory.mb=1600" \
        --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
        --jobconf "mapreduce.reduce.memory.mb=3072" \
        --jobconf "mapreduce.reduce.java.opts=-Xmx2048m" \
-       --jobconf "fs.s3a.acl.default=PublicRead" \
        -r hadoop $WARC_CDX
 

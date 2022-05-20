@@ -64,8 +64,10 @@ class IndexWARCJob(MRJob):
                               default=None)
 
     def mapper_init(self):
-        # Note: this assumes that credentials are set via
-        # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env variables
+        # Note: this assumes that credentials are properly configured, see
+        #   https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#configuring-credentials
+        # best via IAM roles:
+        #   https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#best-practices-for-configuring-credentials
         self.boto_config = botocore.client.Config(
             read_timeout=180,
             retries={'max_attempts' : 20})
