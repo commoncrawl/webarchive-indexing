@@ -58,6 +58,9 @@ export WARC_CDX_SAMPLE="s3a://$WARC_CDX_BUCKET/$CRAWL/cdx/segments/*[358]/*/*.cd
 # SPLIT_FILE could be reused from previous crawl with similar distribution of URLs, see REUSE_SPLIT_FILE
 export SPLIT_FILE="s3a://$WARC_CDX_BUCKET/$CRAWL/splits.seq"
 
+# output path of part-n files of the zipnum job, later concatenated into the cluster.idx
+export ZIPNUM_OUTPUT_DIR="s3a://$WARC_CDX_BUCKET/$CRAWL/indexes/"
+
 # configure S3 buffer directory
 if [ -n "$S3_LOCAL_TEMP_DIR" ]; then
 	S3_LOCAL_TEMP_DIR="--s3_local_temp_dir=$S3_LOCAL_TEMP_DIR"
@@ -140,11 +143,13 @@ fi
 python3 zipnumclusterjob.py \
        --shards=300 \
        --splitfile="$SPLIT_FILE" \
-       --output-dir="$ZIPNUM_CLUSTER_DIR" \
+       --zipnum-dir="$ZIPNUM_CLUSTER_DIR" \
+       --output-dir="$ZIPNUM_OUTPUT_DIR" \
        --no-output \
        --jobconf "mapreduce.map.memory.mb=1600" \
        --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
        --jobconf "mapreduce.reduce.memory.mb=3072" \
        --jobconf "mapreduce.reduce.java.opts=-Xmx2048m" \
+       --jobconf "mapreduce.fileoutputcommitter.cleanup-failures.ignored=true" \
        -r hadoop "$WARC_CDX"
 

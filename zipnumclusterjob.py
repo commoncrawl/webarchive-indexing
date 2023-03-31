@@ -62,8 +62,8 @@ class ZipNumClusterJob(MRJob):
                                    '= num of entries in splits + 1' +
                                    '= num of reducers used')
 
-        self.add_passthru_arg('--s3-upload-acl', dest='s3acl',
-                              help='S3 access permissions (ACL) to be applied to CDX files')
+        self.add_passthru_arg('--zipnum-dir', dest='zipnum_dir',
+                              help='Upload path / directory to place zipnum CDX files')
 
     def jobconf(self):
         orig_jobconf = super(ZipNumClusterJob, self).jobconf()
@@ -106,11 +106,7 @@ class ZipNumClusterJob(MRJob):
 
         self.part_name = 'cdx-%05d.gz' % int(self.part_num)
 
-        self.output_dir = self._get_prop(['mapreduce_output_fileoutputformat_outputdir',
-                                          'mapred.output.dir',
-                                          'mapred_work_output_dir'])
-
-        assert(self.output_dir)
+        assert(self.options.zipnum_dir)
         self.gzip_temp = TemporaryFile(mode='w+b')
 
     def reducer(self, key, values):
@@ -137,31 +133,27 @@ class ZipNumClusterJob(MRJob):
         self.gzip_temp.flush()
         self.gzip_temp.seek(0)
         #TODO: move to generalized put() function
-        if self.output_dir.startswith('s3://') or self.output_dir.startswith('s3a://'):
+        if self.options.zipnum_dir.startswith('s3://') or self.options.zipnum_dir.startswith('s3a://'):
             import boto3
             import botocore
             boto_config = botocore.client.Config(
                 read_timeout=180,
                 retries={'max_attempts' : 20})
             s3client = boto3.client('s3', config=boto_config)
-            s3args = None
-            if self.options.s3acl:
-                s3args = {'ACL': self.options.s3acl}
 
-            parts = urllib.parse.urlsplit(self.output_dir)
+            parts = urllib.parse.urlsplit(self.options.zipnum_dir)
             s3key = parts.path.strip('/') + '/' + self.part_name
             s3url = parts.scheme + '://' + parts.netloc + '/' + s3key
 
             LOG.info('Uploading index to ' + s3url)
             try:
-                s3client.upload_fileobj(self.gzip_temp, parts.netloc, s3key,
-                                        ExtraArgs=s3args)
+                s3client.upload_fileobj(self.gzip_temp, parts.netloc, s3key)
             except botocore.client.ClientError as exception:
                 LOG.error('Failed to upload {}: {}'.format(s3url, exception))
                 return
             LOG.info('Successfully uploaded index file: ' + s3url)
         else:
-            path = os.path.join(self.output_dir, self.part_name)
+            path = os.path.join(self.options.zipnum_dir, self.part_name)
 
             with open(path, 'w+b') as target:
                 shutil.copyfileobj(self.gzip_temp, target)

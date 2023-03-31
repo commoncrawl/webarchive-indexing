@@ -29,15 +29,9 @@ test -d "cdx-$YEARWEEK" || mkdir "cdx-$YEARWEEK"
 cd "cdx-$YEARWEEK"
 
 ## create cluster index
-aws s3 cp --recursive --exclude '*' --include 'part-*' s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ ./
+
+aws s3 cp --recursive --exclude '*' --include 'part-*' "s3://commoncrawl-index-temp/CC-MAIN-$YEARWEEK/indexes/" ./
 cat part-* | awk '{printf "%s\t%s\n",$0,NR}' >cluster.idx
 LC_ALL=C sort -c ./cluster.idx
-#rm ./part-00*
-aws s3 cp ./cluster.idx s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cluster.idx
 
-# remove obsolete data from bucket
-#  - map-reduce _SUCCESS file/marker
-aws s3 rm s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/_SUCCESS
-#  - part-00* files concatenated to cluster.idx
-aws s3 rm --recursive s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/ --exclude "*" --include "part-00*"
-
+aws s3 cp ./cluster.idx "s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cluster.idx"
