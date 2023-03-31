@@ -81,8 +81,8 @@ if [ -n "$WARC_MANIFEST" ]; then
        -r hadoop \
        --jobconf "mapreduce.map.memory.mb=1600" \
        --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
-       $S3_LOCAL_TEMP_DIR \
-       $WARC_MANIFEST
+       "$S3_LOCAL_TEMP_DIR" \
+       "$WARC_MANIFEST"
 fi
 
 
@@ -107,12 +107,12 @@ else
     test -e splits.seq && rm splits.seq
     python3 dosample.py \
            --shards=300 \
-           --splitfile=$SPLIT_FILE \
+           --splitfile="$SPLIT_FILE" \
            --jobconf "mapreduce.map.memory.mb=1600" \
            --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
            --jobconf "mapreduce.map.output.compress=true" \
            --jobconf "mapreduce.output.fileoutputformat.compress=false" \
-           -r hadoop $WARC_CDX_SAMPLE
+           -r hadoop "$WARC_CDX_SAMPLE"
 
 	# in case, the sequence file wasn't written:
 	# 1. verify the content
@@ -126,25 +126,25 @@ else
 	# 3. verify the sequence file
 	#      hadoop fs -text file:$PWD/splits.seq | less
 
-    mv splits.seq ${CRAWL}-splits.seq
+    mv splits.seq "${CRAWL}-splits.seq"
 
-    if aws s3 ls s3${SPLIT_FILE#s3a}; then
+    if aws s3 ls "s3${SPLIT_FILE#s3a}"; then
         echo "Ok, split file has been uploaded"
     else
         echo "Uploading split file ..."
-        aws s3 cp ${CRAWL}-splits.seq s3${SPLIT_FILE#s3a}
+        aws s3 cp "${CRAWL}-splits.seq" "s3${SPLIT_FILE#s3a}"
     fi
 fi
 
 
 python3 zipnumclusterjob.py \
        --shards=300 \
-       --splitfile=$SPLIT_FILE \
+       --splitfile="$SPLIT_FILE" \
        --output-dir="$ZIPNUM_CLUSTER_DIR" \
        --no-output \
        --jobconf "mapreduce.map.memory.mb=1600" \
        --jobconf "mapreduce.map.java.opts=-Xmx1024m" \
        --jobconf "mapreduce.reduce.memory.mb=3072" \
        --jobconf "mapreduce.reduce.java.opts=-Xmx2048m" \
-       -r hadoop $WARC_CDX
+       -r hadoop "$WARC_CDX"
 
