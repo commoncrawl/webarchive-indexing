@@ -106,8 +106,8 @@ class IndexWARCJob(MRJob):
         # set cdx path
         cdx_path = warc_path.replace('crawl-data', 'cc-index/cdx')
         cdx_path = cdx_path.replace('.warc.gz', '.cdx.gz')
-        cdx_path = cdx_path.replace('.wet.gz', '.wet.cdx.gz')
-        cdx_path = cdx_path.replace('.wat.gz', '.wat.cdx.gz')
+        cdx_path = cdx_path.replace('.warc.wet.gz', '.wet.cdx.gz')
+        cdx_path = cdx_path.replace('.warc.wat.gz', '.wat.cdx.gz')
         return cdx_path
 
     def _load_and_index(self, warc_path):
