@@ -57,18 +57,27 @@ class IndexWARCJob(CCFileProcessorSparkJob):
 
         with TemporaryFile(mode='w+b',
                             dir=self.args.local_temp_dir) as cdxtemp:
+            
+            success = False
             with GzipFile(fileobj=cdxtemp, mode='w+b') as cdxfile:
                 # Index to temp
-                write_cdx_index(cdxfile, tempfd, warc_path, **self.index_options)
+                try:
+                    write_cdx_index(cdxfile, tempfd, warc_path, **self.index_options)
+                    success = True
+                except Exception as exc:
+                    # log detailed stack trace
+                    LOG.error('Failed to index %s: %s', warc_path, exc)
 
             # Upload temp
             cdxtemp.flush()
             cdxtemp.seek(0)
 
-            self.write_output_file(cdx_path, cdxtemp, self.args.output_base_url)
-            LOG.info('Successfully uploaded CDX: %s', cdx_path)
-
-            yield cdx_path, 1
+            if success:
+                self.write_output_file(cdx_path, cdxtemp, self.args.output_base_url)
+                LOG.info('Successfully uploaded CDX: %s', cdx_path)
+                yield cdx_path, 1
+            else:
+                yield cdx_path, -1
 
 
 if __name__ == "__main__":
