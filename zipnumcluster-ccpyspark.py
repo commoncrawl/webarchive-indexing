@@ -10,6 +10,10 @@ from pyspark.sql.window import Window
 
 LOG = logging.getLogger('IndexWARCJob')
 
+# note: this is LESS strict about partitioning than the original
+# based on my read of the zipnum clustering code, this shoudl be just fine
+# but so far, it's untested. I plan to test it with the index server we use (locally)
+
 class ZipNumClusterCdx(CCSparkJob):
     name = 'ZipNumClusterCdx'
 
