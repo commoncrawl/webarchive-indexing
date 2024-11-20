@@ -64,9 +64,8 @@ class ZipNumClusterCdx(CCSparkJob):
                 return i
         return len(boundaries)
 
-    def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str, str]]]) -> Iterator[Tuple[str, str, int, int, int]]:
-        """Process partition with chunked compression and first-entry-only indexing"""
-        z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+    def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str, str]]]) -> Iterator[Tuple[str, str, str, str, int, int, int]]:
+        """Process partition with chunked compression and chunk boundary tracking"""
         output_filename = f"cdx-{partition_id:05d}.gz"
         output_file = f"{self.args.output_base_url}/{output_filename}"
         index_entries = []
@@ -77,13 +76,15 @@ class ZipNumClusterCdx(CCSparkJob):
         partition_data = sorted(partition_iter, key=lambda x: x[0])
         
         current_chunk = []
-        first_record = None
+        chunk_min_surt = None
+        chunk_max_surt = None
         
         with open(output_file, 'wb') as f:
             for _, (surt_key, timestamp, json_data) in partition_data:
                 line = f"{surt_key} {timestamp} {json_data}\n"
-                if not first_record:
-                    first_record = (surt_key, timestamp)
+                if chunk_min_surt is None:
+                    chunk_min_surt = surt_key
+                chunk_max_surt = surt_key  # Will end up as max since data is sorted
                 current_chunk.append(line)
                 
                 if len(current_chunk) >= chunk_size:
@@ -94,19 +95,20 @@ class ZipNumClusterCdx(CCSparkJob):
                     chunk_length = len(compressed)
                     f.write(compressed)
                     
-                    # Only index the first entry of the chunk
-                    if first_record:
-                        index_entries.append((
-                            first_record[0],  # surt_key
-                            first_record[1],  # timestamp
-                            partition_id,
-                            current_offset,
-                            chunk_length
-                        ))
+                    # Index entry with chunk boundaries
+                    index_entries.append((
+                        chunk_min_surt,  # min surt
+                        chunk_max_surt,  # max surt
+                        output_filename,  # filename
+                        partition_id,
+                        current_offset,
+                        chunk_length,
+                        len(current_chunk)  # number of records in chunk
+                    ))
                     
                     current_offset += chunk_length
                     current_chunk = []
-                    first_record = None
+                    chunk_min_surt = None
             
             # Handle final chunk
             if current_chunk:
@@ -116,14 +118,15 @@ class ZipNumClusterCdx(CCSparkJob):
                 chunk_length = len(compressed)
                 f.write(compressed)
                 
-                if first_record:
-                    index_entries.append((
-                        first_record[0],
-                        first_record[1],
-                        partition_id,
-                        current_offset,
-                        chunk_length
-                    ))
+                index_entries.append((
+                    chunk_min_surt,
+                    chunk_max_surt,
+                    output_filename,
+                    partition_id,
+                    current_offset,
+                    chunk_length,
+                    len(current_chunk)
+                ))
         
         return index_entries
 
@@ -143,50 +146,29 @@ class ZipNumClusterCdx(CCSparkJob):
                         partitionFunc=lambda key: self.get_partition_id(key, boundaries)) \
             .mapPartitionsWithIndex(self.process_partition)
 
-        # Create index
+        # Update schema for new index format
         index_schema = StructType([
-            StructField("surt_key", StringType(), False),
-            StructField("timestamp", StringType(), False),
+            StructField("min_surt", StringType(), False),
+            StructField("max_surt", StringType(), False),
+            StructField("filename", StringType(), False),
             StructField("partition_id", LongType(), False),
             StructField("offset", LongType(), False),
-            StructField("length", LongType(), False)
+            StructField("length", LongType(), False),
+            StructField("num_records", LongType(), False)
         ])
         
-        w = Window.orderBy("surt_key")
-        # Create index with correct filename formatting
-        index_df = session.createDataFrame(rdd, index_schema)\
-            .withColumn("sequence_number", row_number().over(w))
-
-        index_df = index_df\
-            .withColumn("output_filename", concat(lit("cdx"), col("partition_id").cast(StringType()), lit(".gz")))\
-            .select("surt_key", "timestamp", "output_filename", "offset", "length", "sequence_number", "partition_id")
+        index_df = session.createDataFrame(rdd, index_schema).orderBy("min_surt")
         
-        # Save main index, sorted by surt_key for binary search
-        #index_df.sort("surt_key").coalesce(1).write \
-        #.option("sep", "\t").csv(
-        #    f"{self.args.output_base_url}/index.idx", 
-        #    header=False,
-        #    mode="overwrite"
-        #)
-
-        # Create secondary index for partition boundaries
-        partition_bounds = index_df.groupBy("partition_id") \
-            .agg(
-                min_("surt_key").alias("min_surt_key"),
-                max_("surt_key").alias("max_surt_key")
-            ) \
-            .select("partition_id", "min_surt_key", "max_surt_key") \
-            .sort("partition_id")
-        
-        # Write the partition boundaries to a single text file
-        secondary_index_path = f"{self.args.output_base_url}/secondary_index.idx"
-        with open(secondary_index_path, 'w') as f:
-            for row in partition_bounds.collect():
-                filename = f"cdx{row['partition_id']}.gz"
+        # Write chunk-level index
+        chunk_index_path = f"{self.args.output_base_url}/cluster.idx"
+        with open(chunk_index_path, 'w') as f:
+            seq = 1
+            for row in index_df.collect():
                 # Write min entry
-                f.write(f"{filename}\tmin\t{row['min_surt_key']}\n")
-                # Write max entry
-                f.write(f"{filename}\tmax\t{row['max_surt_key']}\n")
+                f.write(f"{row['min_surt']}\t{row['filename']}\t{row['offset']}\t{row['length']}\t{seq}\n")
+                # Write max entry (was just for testing, we don't really need this in final index I don't think...)
+                # f.write(f"{row['max_surt']}\t{row['filename']}\t{row['offset']}\t{row['length']}\t{row['sequence_number']}\n")
+                seq += 1
 
 if __name__ == "__main__":
     job = ZipNumClusterCdx()
