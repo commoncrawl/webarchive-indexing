@@ -1,7 +1,7 @@
 import logging
 from sparkcc import CCSparkJob
 import os
-from pyspark.sql.functions import row_number, concat, lit, col
+from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
 import gzip
 from typing import Iterator, Tuple, List
 from pyspark.sql.types import StringType, LongType, StructType, StructField
@@ -159,7 +159,7 @@ class ZipNumClusterCdx(CCSparkJob):
 
         index_df = index_df\
             .withColumn("output_filename", concat(lit("cdx"), col("partition_id").cast(StringType()), lit(".gz")))\
-            .select("surt_key", "timestamp", "output_filename", "offset", "length", "sequence_number")
+            .select("surt_key", "timestamp", "output_filename", "offset", "length", "sequence_number", "partition_id")
         
         # Save main index, sorted by surt_key for binary search
         index_df.sort("surt_key").coalesce(1).write \
@@ -170,16 +170,23 @@ class ZipNumClusterCdx(CCSparkJob):
         )
 
         # Create secondary index for partition boundaries
-        partition_bounds = index_df.groupBy("output_filename") \
-            .agg({"surt_key": "min", "surt_key": "max"}) \
-            .sort("output_filename")
+        partition_bounds = index_df.groupBy("partition_id") \
+            .agg(
+                min_("surt_key").alias("min_surt_key"),
+                max_("surt_key").alias("max_surt_key")
+            ) \
+            .select("partition_id", "min_surt_key", "max_surt_key") \
+            .sort("partition_id")
         
-        partition_bounds.coalesce(1).write \
-        .option("sep", "\t").csv(
-            f"{self.args.output_base_url}/secondary_index.idx",
-            header=False,
-            mode="overwrite"
-        )
+        # Write the partition boundaries to a single text file
+        secondary_index_path = f"{self.args.output_base_url}/secondary_index.idx"
+        with open(secondary_index_path, 'w') as f:
+            for row in partition_bounds.collect():
+                filename = f"cdx{row['partition_id']}.gz"
+                # Write min entry
+                f.write(f"{filename}\tmin\t{row['min_surt_key']}\n")
+                # Write max entry
+                f.write(f"{filename}\tmax\t{row['max_surt_key']}\n")
 
 if __name__ == "__main__":
     job = ZipNumClusterCdx()
