@@ -48,8 +48,14 @@ class ZipNumClusterCdx(CCSparkJob):
         samples.sort()
         
         # Select evenly spaced samples as boundaries
-        step = len(samples) // (num_partitions - 1)
-        return [samples[i] for i in range(0, len(samples), step)][:num_partitions-1]
+        if num_partitions > 1:
+            if len(samples) < num_partitions:
+                # If we have fewer samples than requested partitions, use all samples
+                return samples[:-1]  # exclude last sample to ensure num_partitions-1 boundaries
+            step = max(1, len(samples) // (num_partitions - 1))
+            return [samples[i] for i in range(0, len(samples), step)][:num_partitions-1]
+        else:
+            return samples
 
     def get_partition_id(self, key: str, boundaries: List[str]) -> int:
         """Determine partition based on range boundaries"""
