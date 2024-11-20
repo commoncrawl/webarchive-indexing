@@ -34,26 +34,11 @@ class ZipNumClusterCdx(CCSparkJob):
         Determine partition based on SURT key structure.
         Handles special cases like common TLD prefixes.
         """
-        # Split SURT key into components
-        parts = surt_key.split(',')
-        
-        # Handle special cases for domain-based SURT keys
-        if len(parts) > 1:
-            # Skip common TLDs for better distribution
-            if parts[0] in {'com', 'org', 'net', 'edu', 'gov'}:
-                key_for_hash = parts[1]
-            else:
-                key_for_hash = parts[0]
-        else:
-            # Handle non-domain SURT keys (like IP addresses)
-            key_for_hash = parts[0]
-        
-        # Take first 3 meaningful characters for distribution
-        prefix = key_for_hash[:3].ljust(3)
-        
-        # Create a number from the characters that preserves ordering
-        # This ensures similar prefixes go to nearby partitions
-        value = (ord(prefix[0]) << 16) + (ord(prefix[1]) << 8) + ord(prefix[2])
+        if len(surt_key) < 3:
+            surt_key = surt_key.ljust(3, 'a')
+        value = 0
+        for i, c in enumerate(surt_key):
+            value = (value << 8) + ord(c)
         
         return value % num_partitions
     
