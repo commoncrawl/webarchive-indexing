@@ -7,12 +7,9 @@ from typing import Iterator, Tuple, List
 from pyspark.sql.types import StringType, LongType, StructType, StructField
 import zlib
 from pyspark.sql.window import Window
+import random
 
 LOG = logging.getLogger('IndexWARCJob')
-
-# note: this is LESS strict about partitioning than the original
-# based on my read of the zipnum clustering code, this shoudl be just fine
-# but so far, it's untested. I plan to test it with the index server we use (locally)
 
 class ZipNumClusterCdx(CCSparkJob):
     name = 'ZipNumClusterCdx'
@@ -29,94 +26,116 @@ class ZipNumClusterCdx(CCSparkJob):
                             default=300,
                             help="number of partitions/shards")
     
-    def get_partition_id(self, surt_key: str, num_partitions: int) -> int:
-        """
-        Determine partition based on SURT key structure.
-        Handles special cases like common TLD prefixes.
-        """
-        # Split SURT key into components
-        parts = surt_key.split(',')
+    def get_partition_boundaries(self, session, input_path: str, num_partitions: int) -> List[str]:
+        """Use reservoir sampling to determine partition boundaries"""
+        def reservoir_sample(iterator: Iterator[str], k: int) -> List[str]:
+            sample = []
+            for i, item in enumerate(iterator):
+                if i < k:
+                    sample.append(item)
+                else:
+                    j = random.randint(0, i)
+                    if j < k:
+                        sample[j] = item
+            return sample
+
+        # Collect samples and sort them
+        samples = session.sparkContext.textFile(input_path) \
+            .map(lambda line: line.split(" ", 1)[0]) \
+            .mapPartitions(lambda x: reservoir_sample(x, 100)) \
+            .collect()
         
-        # Handle special cases for domain-based SURT keys
-        if len(parts) > 1:
-            # Skip common TLDs for better distribution
-            if parts[0] in {'com', 'org', 'net', 'edu', 'gov'}:
-                key_for_hash = parts[1]
-            else:
-                key_for_hash = parts[0]
-        else:
-            # Handle non-domain SURT keys (like IP addresses)
-            key_for_hash = parts[0]
+        samples.sort()
         
-        # Take first 3 meaningful characters for distribution
-        prefix = key_for_hash[:3].ljust(3)
+        # Select evenly spaced samples as boundaries
+        step = len(samples) // (num_partitions - 1)
+        return [samples[i] for i in range(0, len(samples), step)][:num_partitions-1]
+
+    def get_partition_id(self, key: str, boundaries: List[str]) -> int:
+        """Determine partition based on range boundaries"""
+        for i, boundary in enumerate(boundaries):
+            if key < boundary:
+                return i
+        return len(boundaries)
+
+    def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str, str]]]) -> Iterator[Tuple[str, str, int, int, int]]:
+        """Process partition with chunked compression and first-entry-only indexing"""
+        z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+        output_filename = f"cdx{partition_id}.gz"
+        output_file = f"{self.args.output_base_url}/{output_filename}"
+        index_entries = []
+        current_offset = 0
+        chunk_size = self.args.num_lines
         
-        # Create a number from the characters that preserves ordering
-        # This ensures similar prefixes go to nearby partitions
-        value = (ord(prefix[0]) << 16) + (ord(prefix[1]) << 8) + ord(prefix[2])
+        # Sort partition contents
+        partition_data = sorted(partition_iter, key=lambda x: x[0])
         
-        return value % num_partitions
-    
+        current_chunk = []
+        first_record = None
+        
+        with open(output_file, 'wb') as f:
+            for _, (surt_key, timestamp, json_data) in partition_data:
+                line = f"{surt_key} {timestamp} {json_data}\n"
+                if not first_record:
+                    first_record = (surt_key, timestamp)
+                current_chunk.append(line)
+                
+                if len(current_chunk) >= chunk_size:
+                    # Compress and write chunk
+                    chunk_data = ''.join(current_chunk).encode('utf-8')
+                    z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+                    compressed = z.compress(chunk_data) + z.flush()
+                    chunk_length = len(compressed)
+                    f.write(compressed)
+                    
+                    # Only index the first entry of the chunk
+                    if first_record:
+                        index_entries.append((
+                            first_record[0],  # surt_key
+                            first_record[1],  # timestamp
+                            partition_id,
+                            current_offset,
+                            chunk_length
+                        ))
+                    
+                    current_offset += chunk_length
+                    current_chunk = []
+                    first_record = None
+            
+            # Handle final chunk
+            if current_chunk:
+                chunk_data = ''.join(current_chunk).encode('utf-8')
+                z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+                compressed = z.compress(chunk_data) + z.flush()
+                chunk_length = len(compressed)
+                f.write(compressed)
+                
+                if first_record:
+                    index_entries.append((
+                        first_record[0],
+                        first_record[1],
+                        partition_id,
+                        current_offset,
+                        chunk_length
+                    ))
+        
+        return index_entries
+
     def run_job(self, session):
         os.makedirs(self.args.output_base_url, exist_ok=True)
         input = self.args.input_base_url + self.args.input
         num_partitions = self.args.num_output_partitions
 
-        def process_partition(partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str, str]]]) -> Iterator[Tuple[str, int, int, int]]:
-            """Process partition with chunked compression"""
-            z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
-            output_filename = f"cdx{partition_id}.gz"
-            output_file = f"{self.args.output_base_url}/{output_filename}"
-            index_entries = []
-            current_offset = 0
-            chunk_size = self.args.num_lines
-            
-            # Sort partition contents
-            partition_data = sorted(partition_iter, key=lambda x: x[0])
-            
-            current_chunk = []
-            chunk_records = []  # Store full record info
-            
-            with open(output_file, 'wb') as f:
-                for _, (surt_key, timestamp, json_data) in partition_data:
-                    line = f"{surt_key} {timestamp} {json_data}\n"
-                    current_chunk.append(line)
-                    chunk_records.append((surt_key, timestamp))  # Store both surt_key and timestamp
-                    
-                    if len(current_chunk) >= chunk_size:
-                        # Compress and write chunk
-                        chunk_data = ''.join(current_chunk).encode('utf-8')
-                        compressed = z.compress(chunk_data)
-                        chunk_length = len(compressed)
-                        f.write(compressed)
-                        
-                        # Create single index entry per record
-                        for sk, ts in chunk_records:
-                            index_entries.append((sk, ts, partition_id, current_offset, chunk_length))
-                        
-                        current_offset += chunk_length
-                        current_chunk = []
-                        chunk_records = []
-                    
-                # Handle final chunk
-                if current_chunk:
-                    chunk_data = ''.join(current_chunk).encode('utf-8')
-                    compressed = z.compress(chunk_data) + z.flush()
-                    chunk_length = len(compressed)
-                    f.write(compressed)
-                    
-                    for sk, ts in chunk_records:
-                        index_entries.append((sk, ts, partition_id, current_offset, chunk_length))
-            
-            return index_entries
+        # Get partition boundaries using reservoir sampling
+        boundaries = self.get_partition_boundaries(session, input, num_partitions)
 
-        # Single pass processing with fixed-width partitioning
+        # Process with range partitioning
         rdd = session.sparkContext.textFile(input) \
             .map(lambda line: tuple(line.strip().split(" ", 2))) \
             .keyBy(lambda x: x[0]) \
             .partitionBy(num_partitions, 
-                        partitionFunc=lambda key: self.get_partition_id(key, num_partitions)) \
-            .mapPartitionsWithIndex(process_partition)
+                        partitionFunc=lambda key: self.get_partition_id(key, boundaries)) \
+            .mapPartitionsWithIndex(self.process_partition)
 
         # Create index
         index_schema = StructType([
