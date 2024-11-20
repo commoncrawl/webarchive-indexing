@@ -71,7 +71,8 @@ class ZipNumClusterCdx(CCSparkJob):
                     if len(current_chunk) >= chunk_size:
                         # Compress and write chunk
                         chunk_data = ''.join(current_chunk).encode('utf-8')
-                        compressed = z.compress(chunk_data)
+                        z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+                        compressed = z.compress(chunk_data) + z.flush()
                         chunk_length = len(compressed)
                         f.write(compressed)
                         
@@ -86,6 +87,7 @@ class ZipNumClusterCdx(CCSparkJob):
                 # Handle final chunk
                 if current_chunk:
                     chunk_data = ''.join(current_chunk).encode('utf-8')
+                    z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
                     compressed = z.compress(chunk_data) + z.flush()
                     chunk_length = len(compressed)
                     f.write(compressed)
