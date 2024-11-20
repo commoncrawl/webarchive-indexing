@@ -67,7 +67,7 @@ class ZipNumClusterCdx(CCSparkJob):
     def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str, str]]]) -> Iterator[Tuple[str, str, int, int, int]]:
         """Process partition with chunked compression and first-entry-only indexing"""
         z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
-        output_filename = f"cdx{partition_id}.gz"
+        output_filename = f"cdx-{partition_id:05d}.gz"
         output_file = f"{self.args.output_base_url}/{output_filename}"
         index_entries = []
         current_offset = 0
@@ -162,12 +162,12 @@ class ZipNumClusterCdx(CCSparkJob):
             .select("surt_key", "timestamp", "output_filename", "offset", "length", "sequence_number", "partition_id")
         
         # Save main index, sorted by surt_key for binary search
-        index_df.sort("surt_key").coalesce(1).write \
-        .option("sep", "\t").csv(
-            f"{self.args.output_base_url}/index.idx", 
-            header=False,
-            mode="overwrite"
-        )
+        #index_df.sort("surt_key").coalesce(1).write \
+        #.option("sep", "\t").csv(
+        #    f"{self.args.output_base_url}/index.idx", 
+        #    header=False,
+        #    mode="overwrite"
+        #)
 
         # Create secondary index for partition boundaries
         partition_bounds = index_df.groupBy("partition_id") \
