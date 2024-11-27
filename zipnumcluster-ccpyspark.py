@@ -1,7 +1,7 @@
 import logging
-from sparkcc import CCSparkJob
+from sparkcc import CCFileProcessorSparkJob
 import os
-from pyspark.sql.functions import row_number, concat, lit, col
+from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
 import gzip
 from typing import Iterator, Tuple, List
 from pyspark.sql.types import StringType, LongType, StructType, StructField
@@ -13,15 +13,14 @@ from pyspark import StorageLevel
 
 LOG = logging.getLogger('IndexWARCJob')
 
-# note: this is LESS strict about partitioning than the original
-# based on my read of the zipnum clustering code, this shoudl be just fine
-# but so far, it's untested. I plan to test it with the index server we use (locally)
+# TODO: WE USE CCFileProcessorSparkJob here only for write_output_file, we should probably move write_output_file to CCSparkJob instead.
+# It's OK for this one, because we override the entire run_job method, but it's not ideal, because we're not really doing "file-wise" processing here...
 
-class ZipNumClusterCdx(CCSparkJob):
+class ZipNumClusterCdx(CCFileProcessorSparkJob):
     name = 'ZipNumClusterCdx'
 
     def add_arguments(self, parser):
-        super().add_arguments(parser)
+        super(CCFileProcessorSparkJob,self).add_arguments(parser)
         parser.add_argument("--output_base_url", required=False,
                             default='my_cdx_bucket',
                             help="destination for output")
@@ -145,10 +144,11 @@ class ZipNumClusterCdx(CCSparkJob):
         
         rdd = rdd.mapPartitionsWithIndex(self.process_partition)
 
-        # Create index
+        # Update schema for new index format
         index_schema = StructType([
-            StructField("surt_key", StringType(), False),
-            StructField("timestamp", StringType(), False),
+            StructField("min_surt", StringType(), False),
+            StructField("max_surt", StringType(), False),
+            StructField("filename", StringType(), False),
             StructField("partition_id", LongType(), False),
             StructField("offset", LongType(), False),
             StructField("length", LongType(), False)
