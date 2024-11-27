@@ -1,21 +1,39 @@
-import logging
-from sparkcc import CCFileProcessorSparkJob
 import os
-from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
-import gzip
-from typing import Iterator, Tuple, List
-from pyspark.sql.types import StringType, LongType, StructType, StructField
 import zlib
-from pyspark.sql.window import Window
-import random
-import pickle
+import json
+import logging
+from typing import Iterator, Tuple, List
+from sparkcc import CCFileProcessorSparkJob
 from pyspark import StorageLevel
+from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
+from pyspark.sql.types import StringType, LongType, StructType, StructField
+from pyspark.sql.window import Window
 
 LOG = logging.getLogger('IndexWARCJob')
 
-# TODO: WE USE CCFileProcessorSparkJob here only for write_output_file, we should probably move write_output_file to CCSparkJob instead.
-# It's OK for this one, because we override the entire run_job method, but it's not ideal, because we're not really doing "file-wise" processing here...
+# note: this is LESS strict about partitioning than the original
+# based on my read of the zipnum clustering code, this shoudl be just fine
+# but so far, it's untested. I plan to test it with the index server we use (locally)
 
+# some of these functions need to be serialized by spark, so, keep them outside of the class
+# so we don't have issues with EMR serialization
+def parse_line(line):
+    try:
+        parts = line.split(' ', 2)
+        if len(parts) != 3:
+            return None
+        surt_key, timestamp, json_str = parts
+        return (surt_key, (timestamp, json_str))
+    except:
+        return None
+
+def get_partition_id(key: str, boundaries_data) -> int:
+    """Determine partition based on range boundaries"""
+    for i, boundary in enumerate(boundaries_data):
+        if key < boundary:
+            return i
+    return len(boundaries_data)
+    
 class ZipNumClusterCdx(CCFileProcessorSparkJob):
     name = 'ZipNumClusterCdx'
 
@@ -25,7 +43,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                             default='my_cdx_bucket',
                             help="destination for output")
         parser.add_argument("--partition_boundries_file", required=False,
-                            help="Full path to a file containing partition boundaries. if specified, and does not exist, will be created, otherwise, will be used.")
+                            help="Full path to a json file containing partition boundaries. if specified, and does not exist, will be created, otherwise, will be used.")
         parser.add_argument("--num_lines", type=int, required=False,
                             default=3000,
                             help="number of lines to compress in each chunk")
@@ -62,15 +80,17 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                     chunk_length = len(compressed)
                     f.write(compressed)
                     
+                    # Index entry with chunk boundaries
                     index_entries.append((
-                        chunk_min_surt,
-                        chunk_max_surt,
-                        output_filename,
+                        chunk_min_surt,  # min surt
+                        chunk_max_surt,  # max surt
+                        output_filename,  # filename
                         partition_id,
                         current_offset,
                         chunk_length,
-                        len(current_chunk)
+                        len(current_chunk)  # number of records in chunk
                     ))
+                    
                     current_offset += chunk_length
                     current_chunk = []
                     chunk_min_surt = None
@@ -100,16 +120,6 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         os.unlink(output_filename)
 
         return index_entries
-
-    def parse_line(_, line):
-        try:
-            parts = line.split(' ', 2)
-            if len(parts) != 3:
-                return None
-            surt_key, timestamp, json_str = parts
-            return (surt_key, (timestamp, json_str))
-        except:
-            return None
     
     def run_job(self, session):
         os.makedirs(self.args.output_base_url, exist_ok=True)
@@ -118,45 +128,47 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         boundries_file_uri = self.args.partition_boundries_file
 
 
-        rdd = session.sparkContext.textFile(input).map(self.parse_line).filter(lambda x: x is not None)
+        rdd = session.sparkContext.textFile(input).map(parse_line).filter(lambda x: x is not None)
 
         # Cache the RDD with MEMORY_AND_DISK storage level
         #rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
         #rdd = rdd.cache()
 
         boundaries = None
+        ##logging.info(f"Boundaries file: {boundries_file_uri}")
         if boundries_file_uri and self.check_for_output_file(boundries_file_uri):
+            ##logging.info(f"Boundaries file found, using it: {boundries_file_uri}")
             with self.fetch_file(boundries_file_uri) as f:
-                boundaries = pickle.load(f)
+                boundaries = json.load(f)
         else:
+            ##logging.info(f"NO Boundaries file found, creating it: {boundries_file_uri}")
             samples = rdd.keys().sample(False, 0.1).collect()
             samples.sort()
             step = len(samples) // num_partitions
             boundaries = samples[::step][:num_partitions-1]
             
-            temp_file_name = 'temp_range_boundaries.pkl'
-            with open(temp_file_name, 'wb') as f:
-                pickle.dump(boundaries, f)
+            temp_file_name = 'temp_range_boundaries.json'
+            with open(temp_file_name, 'w') as f:
+                json.dump(boundaries, f)
             
             with open(temp_file_name, 'rb') as f:
                 self.write_output_file(boundries_file_uri, f)
 
             os.unlink(temp_file_name)
         
-        def get_partition_id(key: str) -> int:
-            """Determine partition based on range boundaries"""
-            for i, boundary in enumerate(boundaries):
-                if key < boundary:
-                    return i
-            return len(boundaries)
+        
         
         # Process with range partitioning
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
-            partitionFunc=lambda k: get_partition_id(k),
+            partitionFunc=lambda k: get_partition_id(k,boundaries),
             keyfunc=lambda x: x[0]) \
-        .mapPartitionsWithIndex(self.process_partition)
-
+        .mapPartitionsWithIndex(self.process_partition) \
+        .values()
+        
+        # EMR has issues with this...
+        # rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+        
         # Update schema for new index format
         index_schema = StructType([
             StructField("min_surt", StringType(), False),
@@ -165,7 +177,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             StructField("partition_id", LongType(), False),
             StructField("offset", LongType(), False),
             StructField("length", LongType(), False),
-            StructField("chunk_record_count", LongType(), False)
+            StructField("num_records", LongType(), False)
         ])
         
         index_df = session.createDataFrame(rdd, index_schema).orderBy("min_surt")
