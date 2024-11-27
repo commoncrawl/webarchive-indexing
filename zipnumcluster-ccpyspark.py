@@ -33,12 +33,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                             default=300,
                             help="number of partitions/shards")
 
-    def get_partition_id(self, key: str, boundaries: List[str]) -> int:
-        """Determine partition based on range boundaries"""
-        for i, boundary in enumerate(boundaries):
-            if key < boundary:
-                return i
-        return len(boundaries)
+
 
     def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str]]]) -> Iterator[Tuple[str, str, str, str, int, int, int]]:
         """Process partition with chunked compression and chunk boundary tracking"""
@@ -67,8 +62,18 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                     chunk_length = len(compressed)
                     f.write(compressed)
                     
-                    for sk, ts in chunk_records:
-                        index_entries.append((sk, ts, partition_id, current_offset, chunk_length))
+                    index_entries.append((
+                        chunk_min_surt,
+                        chunk_max_surt,
+                        output_filename,
+                        partition_id,
+                        current_offset,
+                        chunk_length,
+                        len(current_chunk)
+                    ))
+                    current_offset += chunk_length
+                    current_chunk = []
+                    chunk_min_surt = None
             
             # Handle final chunk
             if current_chunk:
@@ -87,6 +92,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                     chunk_length,
                     len(current_chunk)
                 ))
+                current_chunk = []
         
         with open(output_filename, 'rb') as fd:
             self.write_output_file(output_filename, fd, self.args.output_base_url)
@@ -115,7 +121,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         rdd = session.sparkContext.textFile(input).map(self.parse_line).filter(lambda x: x is not None)
 
         # Cache the RDD with MEMORY_AND_DISK storage level
-        rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+        #rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+        #rdd = rdd.cache()
 
         boundaries = None
         if boundries_file_uri and self.check_for_output_file(boundries_file_uri):
@@ -136,13 +143,19 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
             os.unlink(temp_file_name)
         
-        # Process with range partitioning
-        rdd = rdd.keyBy(lambda x: x[0]) \
-            .partitionBy(num_partitions, lambda k: self.get_partition_id(k, boundaries)) \
-            .sortByKey() \
-            .values()
+        def get_partition_id(key: str) -> int:
+            """Determine partition based on range boundaries"""
+            for i, boundary in enumerate(boundaries):
+                if key < boundary:
+                    return i
+            return len(boundaries)
         
-        rdd = rdd.mapPartitionsWithIndex(self.process_partition)
+        # Process with range partitioning
+        rdd = rdd.repartitionAndSortWithinPartitions(
+            numPartitions=num_partitions,
+            partitionFunc=lambda k: get_partition_id(k),
+            keyfunc=lambda x: x[0]) \
+        .mapPartitionsWithIndex(self.process_partition)
 
         # Update schema for new index format
         index_schema = StructType([
@@ -151,29 +164,28 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             StructField("filename", StringType(), False),
             StructField("partition_id", LongType(), False),
             StructField("offset", LongType(), False),
-            StructField("length", LongType(), False)
+            StructField("length", LongType(), False),
+            StructField("chunk_record_count", LongType(), False)
         ])
         
-        w = Window.orderBy("surt_key")
-        # Create index with correct filename formatting
-        index_df = session.createDataFrame(rdd, index_schema)\
-            .withColumn("sequence_number", row_number().over(w))
-
-        index_df = index_df\
-            .withColumn("output_filename", concat(lit("cdx"), col("partition_id").cast(StringType()), lit(".gz")))\
-            .select("surt_key", "timestamp", "output_filename", "offset", "length", "sequence_number")
-
-        # Create secondary index for partition boundaries
-        partition_bounds = index_df.groupBy("output_filename") \
-            .agg({"surt_key": "min", "surt_key": "max"}) \
-            .sort("output_filename")
+        index_df = session.createDataFrame(rdd, index_schema).orderBy("min_surt")
         
-        partition_bounds.coalesce(1).write \
-        .option("sep", "\t").csv(
-            f"{self.args.output_base_url}/secondary_index.idx",
-            header=False,
-            mode="overwrite"
-        )
+        # Write chunk-level index
+        chunk_index_path = f"cluster.idx"
+        with open(chunk_index_path, 'w') as f:
+            seq = 1
+            for row in index_df.collect():
+                # Write min entry
+                f.write(f"{row['min_surt']}\t{row['filename']}\t{row['offset']}\t{row['length']}\t{seq}\n")
+                # Write max entry (was just for testing, we don't really need this in final index I don't think...)
+                # f.write(f"{row['max_surt']}\t{row['filename']}\t{row['offset']}\t{row['length']}\t{row['sequence_number']}\n")
+                seq += 1
+
+        with open(chunk_index_path, 'rb') as fd:
+            self.write_output_file(chunk_index_path, fd, self.args.output_base_url)
+        
+        os.unlink(chunk_index_path)
+        
 
 if __name__ == "__main__":
     job = ZipNumClusterCdx()
