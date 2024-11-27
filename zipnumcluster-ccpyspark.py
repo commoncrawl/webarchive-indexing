@@ -1,5 +1,5 @@
 import logging
-from sparkcc import CCSparkJob
+from sparkcc import CCFileProcessorSparkJob
 import os
 from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
 import gzip
@@ -11,11 +11,14 @@ import random
 
 LOG = logging.getLogger('IndexWARCJob')
 
-class ZipNumClusterCdx(CCSparkJob):
+# TODO: WE USE CCFileProcessorSparkJob here only for write_output_file, we should probably move write_output_file to CCSparkJob instead.
+# It's OK for this one, because we override the entire run_job method, but it's not ideal, because we're not really doing "file-wise" processing here...
+
+class ZipNumClusterCdx(CCFileProcessorSparkJob):
     name = 'ZipNumClusterCdx'
 
     def add_arguments(self, parser):
-        super().add_arguments(parser)
+        super(CCFileProcessorSparkJob,self).add_arguments(parser)
         parser.add_argument("--output_base_url", required=False,
                             default='my_cdx_bucket',
                             help="destination for output")
@@ -67,7 +70,6 @@ class ZipNumClusterCdx(CCSparkJob):
     def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str, str]]]) -> Iterator[Tuple[str, str, str, str, int, int, int]]:
         """Process partition with chunked compression and chunk boundary tracking"""
         output_filename = f"cdx-{partition_id:05d}.gz"
-        output_file = f"{self.args.output_base_url}/{output_filename}"
         index_entries = []
         current_offset = 0
         chunk_size = self.args.num_lines
@@ -79,7 +81,7 @@ class ZipNumClusterCdx(CCSparkJob):
         chunk_min_surt = None
         chunk_max_surt = None
         
-        with open(output_file, 'wb') as f:
+        with open(output_filename, 'wb') as f:
             for _, (surt_key, timestamp, json_data) in partition_data:
                 line = f"{surt_key} {timestamp} {json_data}\n"
                 if chunk_min_surt is None:
@@ -128,6 +130,11 @@ class ZipNumClusterCdx(CCSparkJob):
                     len(current_chunk)
                 ))
         
+        with open(output_filename, 'rb') as fd:
+            self.write_output_file(output_filename, fd, self.args.output_base_url)
+        
+        os.unlink(output_filename)
+
         return index_entries
 
     def run_job(self, session):
@@ -160,7 +167,7 @@ class ZipNumClusterCdx(CCSparkJob):
         index_df = session.createDataFrame(rdd, index_schema).orderBy("min_surt")
         
         # Write chunk-level index
-        chunk_index_path = f"{self.args.output_base_url}/cluster.idx"
+        chunk_index_path = f"cluster.idx"
         with open(chunk_index_path, 'w') as f:
             seq = 1
             for row in index_df.collect():
@@ -169,6 +176,12 @@ class ZipNumClusterCdx(CCSparkJob):
                 # Write max entry (was just for testing, we don't really need this in final index I don't think...)
                 # f.write(f"{row['max_surt']}\t{row['filename']}\t{row['offset']}\t{row['length']}\t{row['sequence_number']}\n")
                 seq += 1
+
+        with open(chunk_index_path, 'rb') as fd:
+            self.write_output_file(chunk_index_path, fd, self.args.output_base_url)
+        
+        os.unlink(chunk_index_path)
+        
 
 if __name__ == "__main__":
     job = ZipNumClusterCdx()
