@@ -8,8 +8,13 @@ from pyspark import StorageLevel
 from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
 from pyspark.sql.types import StringType, LongType, StructType, StructField
 from pyspark.sql.window import Window
+import boto3
+import botocore
+import re
 
 LOG = logging.getLogger('IndexWARCJob')
+data_url_pattern = re.compile('^(s3|https?|file|hdfs|s3a|s3n):(?://([^/]*))?/(.*)')
+
 
 # note: this is LESS strict about partitioning than the original
 # based on my read of the zipnum clustering code, this shoudl be just fine
@@ -33,6 +38,109 @@ def get_partition_id(key: str, boundaries_data) -> int:
         if key < boundary:
             return i
     return len(boundaries_data)
+
+def write_output_file(filename: str, fd, base_url: str):
+    uri = os.path.join(base_url, filename)
+
+    (scheme, netloc, path) = (None, None, None)
+    uri_match = data_url_pattern.match(uri)
+    if not uri_match and base_uri:
+        # relative input URI (path) and base URI defined
+        uri = base_uri + uri
+        uri_match = data_url_pattern.match(uri)
+    if uri_match:
+        (scheme, netloc, path) = uri_match.groups()
+    else:
+        # keep local file paths as is
+        path = uri
+    
+    if scheme in ['s3', 's3a', 's3n']:
+        bucketname = netloc
+        output_path = path
+        try:
+            client = boto3.client('s3', use_ssl=False)
+            client.upload_fileobj(fd, bucketname, path)
+        except botocore.client.ClientError as exception:
+            LOG.error('Failed to write to S3 {}: {}'.format(output_path, exception))
+    else:
+        LOG.info('Writing local file {}'.format(uri))
+        if scheme == 'file':
+            # must be an absolute path
+            uri = os.path.join('/', path)
+        else:
+            base_dir = os.path.abspath(os.path.dirname(__file__))
+            uri = os.path.join(base_dir, uri)
+        os.makedirs(os.path.dirname(uri), exist_ok=True)
+        with open(uri, 'wb') as f:
+            f.write(fd.read())
+
+def process_partition(partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str]]], 
+                     num_lines: int, output_base_url: str) -> Iterator[Tuple[str, str, str, str, int, int, int]]:
+    """Process partition with chunked compression and chunk boundary tracking"""
+    output_filename = f"cdx-{partition_id:05d}.gz"
+    index_entries = []
+    current_offset = 0
+    chunk_size = num_lines
+    
+    current_chunk = []
+    chunk_min_surt = None
+    chunk_max_surt = None
+    
+    with open(output_filename, 'wb') as f:
+        for surt_key, (timestamp, json_data) in partition_iter:
+            line = f"{surt_key} {timestamp} {json_data}\n"
+            if chunk_min_surt is None:
+                chunk_min_surt = surt_key
+            chunk_max_surt = surt_key  # Will end up as max since data is sorted
+            current_chunk.append(line)
+            
+            if len(current_chunk) >= chunk_size:
+                # Compress and write chunk
+                chunk_data = ''.join(current_chunk).encode('utf-8')
+                z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+                compressed = z.compress(chunk_data) + z.flush()
+                chunk_length = len(compressed)
+                f.write(compressed)
+                
+                # Index entry with chunk boundaries
+                index_entries.append((
+                    chunk_min_surt,  # min surt
+                    chunk_max_surt,  # max surt
+                    output_filename,  # filename
+                    partition_id,
+                    current_offset,
+                    chunk_length,
+                    len(current_chunk)  # number of records in chunk
+                ))
+                
+                current_offset += chunk_length
+                current_chunk = []
+                chunk_min_surt = None
+        
+        # Handle final chunk
+        if current_chunk:
+            chunk_data = ''.join(current_chunk).encode('utf-8')
+            z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
+            compressed = z.compress(chunk_data) + z.flush()
+            chunk_length = len(compressed)
+            f.write(compressed)
+            
+            index_entries.append((
+                chunk_min_surt,
+                chunk_max_surt,
+                output_filename,
+                partition_id,
+                current_offset,
+                chunk_length,
+                len(current_chunk)
+            ))
+            current_chunk = []
+    
+    with open(output_filename, 'rb') as fd:
+        write_output_file(output_filename, fd, output_base_url)
+    
+    os.unlink(output_filename)
+    return index_entries
     
 class ZipNumClusterCdx(CCFileProcessorSparkJob):
     name = 'ZipNumClusterCdx'
@@ -51,83 +159,13 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                             default=300,
                             help="number of partitions/shards")
 
-
-
-    def process_partition(self, partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str]]]) -> Iterator[Tuple[str, str, str, str, int, int, int]]:
-        """Process partition with chunked compression and chunk boundary tracking"""
-        output_filename = f"cdx-{partition_id:05d}.gz"
-        index_entries = []
-        current_offset = 0
-        chunk_size = self.args.num_lines
-        
-        current_chunk = []
-        chunk_min_surt = None
-        chunk_max_surt = None
-        
-        with open(output_filename, 'wb') as f:
-            for surt_key, (timestamp, json_data) in partition_iter:
-                line = f"{surt_key} {timestamp} {json_data}\n"
-                if chunk_min_surt is None:
-                    chunk_min_surt = surt_key
-                chunk_max_surt = surt_key  # Will end up as max since data is sorted
-                current_chunk.append(line)
-                
-                if len(current_chunk) >= chunk_size:
-                    # Compress and write chunk
-                    chunk_data = ''.join(current_chunk).encode('utf-8')
-                    z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
-                    compressed = z.compress(chunk_data) + z.flush()
-                    chunk_length = len(compressed)
-                    f.write(compressed)
-                    
-                    # Index entry with chunk boundaries
-                    index_entries.append((
-                        chunk_min_surt,  # min surt
-                        chunk_max_surt,  # max surt
-                        output_filename,  # filename
-                        partition_id,
-                        current_offset,
-                        chunk_length,
-                        len(current_chunk)  # number of records in chunk
-                    ))
-                    
-                    current_offset += chunk_length
-                    current_chunk = []
-                    chunk_min_surt = None
-            
-            # Handle final chunk
-            if current_chunk:
-                chunk_data = ''.join(current_chunk).encode('utf-8')
-                z = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS + 16)
-                compressed = z.compress(chunk_data) + z.flush()
-                chunk_length = len(compressed)
-                f.write(compressed)
-                
-                index_entries.append((
-                    chunk_min_surt,
-                    chunk_max_surt,
-                    output_filename,
-                    partition_id,
-                    current_offset,
-                    chunk_length,
-                    len(current_chunk)
-                ))
-                current_chunk = []
-        
-        with open(output_filename, 'rb') as fd:
-            self.write_output_file(output_filename, fd, self.args.output_base_url)
-        
-        os.unlink(output_filename)
-
-        return index_entries
-    
     def run_job(self, session):
         os.makedirs(self.args.output_base_url, exist_ok=True)
         input = self.args.input_base_url + self.args.input
         num_partitions = self.args.num_output_partitions
         boundries_file_uri = self.args.partition_boundries_file
-
-
+        num_lines = self.args.num_lines
+        output_base_url = self.args.output_base_url
         rdd = session.sparkContext.textFile(input).map(parse_line).filter(lambda x: x is not None)
 
         # Cache the RDD with MEMORY_AND_DISK storage level
@@ -156,18 +194,13 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
             os.unlink(temp_file_name)
         
-        
-        
-        # Process with range partitioning
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
             partitionFunc=lambda k: get_partition_id(k,boundaries),
             keyfunc=lambda x: x[0]) \
-        .mapPartitionsWithIndex(self.process_partition) \
-        .values()
-        
-        # EMR has issues with this...
-        # rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+        .mapPartitionsWithIndex(lambda idx, iter: process_partition(idx, iter, num_lines, output_base_url)) \
+        .map(lambda kv: kv[1]) \
+        .collect()
         
         # Update schema for new index format
         index_schema = StructType([
