@@ -188,7 +188,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         parser.add_argument("--output_base_url", required=False,
                             default='my_cdx_bucket',
                             help="destination for output")
-        parser.add_argument("--partition_boundries_file", required=False,
+        parser.add_argument("--partition_boundaries_file", required=False,
                             help="Full path to a json file containing partition boundaries. if specified, and does not exist, will be created, otherwise, will be used.")
         parser.add_argument("--num_lines", type=int, required=False,
                             default=3000,
@@ -201,7 +201,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         os.makedirs(self.args.output_base_url, exist_ok=True)
         input = self.args.input_base_url + self.args.input
         num_partitions = self.args.num_output_partitions
-        boundries_file_uri = self.args.partition_boundries_file
+        boundaries_file_uri = self.args.partition_boundaries_file
         num_lines = self.args.num_lines
         output_base_url = self.args.output_base_url
         rdd = session.sparkContext.textFile(input).map(parse_line).filter(lambda x: x is not None)
@@ -211,10 +211,10 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         #rdd = rdd.cache()
 
         boundaries = None
-        ##logging.info(f"Boundaries file: {boundries_file_uri}")
-        if boundries_file_uri and self.check_for_output_file(boundries_file_uri):
-            ##logging.info(f"Boundaries file found, using it: {boundries_file_uri}")
-            with self.fetch_file(boundries_file_uri) as f:
+        ##logging.info(f"Boundaries file: {boundaries_file_uri}")
+        if boundaries_file_uri and self.check_for_output_file(boundaries_file_uri):
+            ##logging.info(f"Boundaries file found, using it: {boundaries_file_uri}")
+            with self.fetch_file(boundaries_file_uri) as f:
                 boundaries = json.load(f)
         else:
             # this percent needs to be pretty small, since this collect brings data back to driver...
@@ -235,7 +235,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 json.dump(boundaries, f)
             
             with open(temp_file_name, 'rb') as f:
-                self.write_output_file(boundries_file_uri, f)
+                self.write_output_file(boundaries_file_uri, f)
 
             os.unlink(temp_file_name)
         
