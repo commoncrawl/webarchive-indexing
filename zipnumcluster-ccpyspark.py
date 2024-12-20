@@ -241,8 +241,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
-            partitionFunc=lambda k: get_partition_id(k,boundaries),
-            keyfunc=lambda x: x[0]) \
+            partitionFunc=lambda k: get_partition_id(k,boundaries)) \
         .mapPartitionsWithIndex(lambda idx, iter: process_partition(idx, iter, num_lines, output_base_url)) \
         .collect()
     
