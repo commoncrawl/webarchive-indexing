@@ -185,10 +185,10 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
     def add_arguments(self, parser):
         super(CCFileProcessorSparkJob,self).add_arguments(parser)
-        parser.add_argument("--output_base_url", required=False,
+        parser.add_argument("--output_base_url", required=True,
                             default='my_cdx_bucket',
                             help="destination for output")
-        parser.add_argument("--partition_boundaries_file", required=False,
+        parser.add_argument("--partition_boundaries_file", required=True,
                             help="Full path to a json file containing partition boundaries. if specified, and does not exist, will be created, otherwise, will be used.")
         parser.add_argument("--num_lines", type=int, required=False,
                             default=3000,
