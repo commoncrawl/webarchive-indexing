@@ -251,11 +251,16 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 with self.fetch_file(output_base_url + idx_file) as idx_fd:
                     for line in idx_fd:
                         f.write(line)
+                    # TODO: remove the idx file...
 
         with open('cluster.idx', 'rb') as f:
             self.write_output_file('cluster.idx', f, output_base_url)
 
         os.unlink('cluster.idx')
+
+        # These todo's will remove most of the need for any post processing...
+        # TODO: create metadata.yml andput it to output_base_url
+        # TODO: remove the "*.idx" files from the output_base_url
         
 if __name__ == "__main__":
     job = ZipNumClusterCdx()
