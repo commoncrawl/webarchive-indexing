@@ -2,24 +2,31 @@ import os
 import zlib
 import json
 import logging
+
 from typing import Iterator, Tuple, List
-from sparkcc import CCFileProcessorSparkJob
-from pyspark import StorageLevel
-from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
-from pyspark.sql.types import StringType, LongType, StructType, StructField
-from pyspark.sql.window import Window
+
 import boto3
 import botocore
 import re
 
-LOG = logging.getLogger('IndexWARCJob')
+from pyspark import StorageLevel
+from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
+from pyspark.sql.types import StringType, LongType, StructType, StructField
+from pyspark.sql.window import Window
+
+from sparkcc import CCFileProcessorSparkJob
+
+
+LOG = logging.getLogger('ZipNumClusterCdx')
 data_url_pattern = re.compile('^(s3|https?|file|hdfs|s3a|s3n):(?://([^/]*))?/(.*)')
 
 
+# TODO: remove comment lines after testing
 # note: this is LESS strict about partitioning than the original
-# based on my read of the zipnum clustering code, this shoudl be just fine
+# based on my read of the zipnum clustering code, this should be just fine
 # but so far, it's untested. I plan to test it with the index server we use (locally)
 
+# TODO: try to move the functions below into ZipNumClusterCdx class
 # some of these functions need to be serialized by spark, so, keep them outside of the class
 # so we don't have issues with EMR serialization
 def parse_line(line):
@@ -52,6 +59,7 @@ def get_partition_id(key: str, boundaries_data) -> int:
             
     return left
 
+# TODO: this duplicates code defined in CCFileProcessorSparkJob
 def write_output_file(filename: str, fd, base_uri: str = None):
     uri = os.path.join(base_uri, filename)
 
@@ -178,7 +186,7 @@ def write_partition_with_global_seq(idx, partition_iter, records_per_partition=N
     
     os.unlink(partition_idx_file)
 
-    return [(partition_idx_file,True)]
+    return [(partition_idx_file, True)]
 
 class ZipNumClusterCdx(CCFileProcessorSparkJob):
     name = 'ZipNumClusterCdx'
@@ -206,6 +214,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         output_base_url = self.args.output_base_url
         rdd = session.sparkContext.textFile(input).map(parse_line).filter(lambda x: x is not None)
 
+        # TODO
         # Cache the RDD with MEMORY_AND_DISK storage level
         #rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
         #rdd = rdd.cache()
@@ -242,12 +251,12 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
             partitionFunc=lambda k: get_partition_id(k,boundaries)) \
-        .mapPartitionsWithIndex(lambda idx, iter: process_partition(idx, iter, num_lines, output_base_url)) \
-        .collect()
+            .mapPartitionsWithIndex(lambda idx, iter: process_partition(idx, iter, num_lines, output_base_url)) \
+            .collect()
     
         # loop over the output files and concatenate them into a single final file
         with open('cluster.idx', 'wb') as f:
-            for idx_file,_ in rdd:
+            for idx_file, _ in rdd:
                 with self.fetch_file(output_base_url + idx_file) as idx_fd:
                     for line in idx_fd:
                         f.write(line)

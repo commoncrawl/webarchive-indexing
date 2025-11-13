@@ -36,7 +36,6 @@ class IndexWARCJob(CCFileProcessorSparkJob):
                             help="skip processing files that already have CDX")
     
     def _conv_warc_to_cdx_path(self, warc_path):
-        # set cdx path
         cdx_path = warc_path.replace('crawl-data', 'cc-index/cdx')
         cdx_path = cdx_path.replace('.warc.gz', '.cdx.gz')
         cdx_path = cdx_path.replace('.warc.wet.gz', '.wet.cdx.gz')
@@ -56,19 +55,16 @@ class IndexWARCJob(CCFileProcessorSparkJob):
             return
 
         with TemporaryFile(mode='w+b',
-                            dir=self.args.local_temp_dir) as cdxtemp:
+                           dir=self.args.local_temp_dir) as cdxtemp:
             
             success = False
             with GzipFile(fileobj=cdxtemp, mode='w+b') as cdxfile:
-                # Index to temp
                 try:
                     write_cdx_index(cdxfile, tempfd, warc_path, **self.index_options)
                     success = True
                 except Exception as exc:
-                    # log detailed stack trace
                     LOG.error('Failed to index %s: %s', warc_path, exc)
 
-            # Upload temp
             cdxtemp.flush()
             cdxtemp.seek(0)
 
