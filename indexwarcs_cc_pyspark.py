@@ -9,7 +9,6 @@ from gzip import GzipFile
 LOG = logging.getLogger('IndexWARCJob')
 
 
-#=============================================================================
 class IndexWARCJob(CCFileProcessorSparkJob):
     """ This job receives as input a manifest of WARC/ARC files and produces
     a CDX index per file
