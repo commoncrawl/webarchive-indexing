@@ -35,7 +35,7 @@ def parse_line(line):
         if len(parts) != 3:
             return None
         surt_key, timestamp, json_str = parts
-        return (surt_key, (timestamp, json_str))
+        return ((surt_key, timestamp), json_str)
     except:
         return None
 
@@ -108,7 +108,7 @@ def process_partition(partition_id: int, partition_iter: Iterator[Tuple[str, Tup
     chunk_max_surt = None
     
     with open(output_filename, 'wb') as f:
-        for surt_key, (timestamp, json_data) in partition_iter:
+        for (surt_key, timestamp), json_data in partition_iter:
             line = f"{surt_key} {timestamp} {json_data}\n"
             if chunk_min_surt is None:
                 chunk_min_surt = surt_key
@@ -250,7 +250,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
-            partitionFunc=lambda k: get_partition_id(k,boundaries)) \
+            partitionFunc=lambda k: get_partition_id(k, boundaries)) \
             .mapPartitionsWithIndex(lambda idx, iter: process_partition(idx, iter, num_lines, output_base_url)) \
             .collect()
     
