@@ -130,9 +130,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         with open(partition_idx_file, 'w') as f:
             seq = start_seq
             for record in partition_iter:
-                min_surt, _, filename, _, offset, length, _ = record
-                timestamp = "20240522010826" # TODO: what timestamp should this be????
-                f.write(f"{min_surt} {timestamp}\t{filename}\t{offset}\t{length}\t{seq}\n")
+                min_surt, _, min_surt_timestamp, filename, _, offset, length, _ = record
+                f.write(f"{min_surt} {min_surt_timestamp}\t{filename}\t{offset}\t{length}\t{seq}\n")
                 seq += 1
 
         with open(partition_idx_file, 'rb') as fd:
@@ -160,6 +159,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 line = f"{surt_key} {timestamp} {json_data}\n"
                 if chunk_min_surt is None:
                     chunk_min_surt = surt_key
+                    chunk_min_timestamp = timestamp
                 chunk_max_surt = surt_key  # Will end up as max since data is sorted
                 current_chunk.append(line)
 
@@ -175,6 +175,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                     index_entries.append((
                         str(chunk_min_surt),   # min surt
                         str(chunk_max_surt),   # max surt
+                        str(chunk_min_timestamp), # capture time
                         str(output_filename),  # filename
                         int(partition_id),     # explicit integer conversion
                         int(current_offset),   # explicit integer conversion
@@ -197,6 +198,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 index_entries.append((
                     str(chunk_min_surt),  # min surt
                     str(chunk_max_surt),  # max surt
+                    str(chunk_min_timestamp), # capture time
                     str(output_filename),
                     int(partition_id),
                     int(current_offset),
