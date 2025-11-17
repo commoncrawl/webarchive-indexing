@@ -215,7 +215,6 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         return final_files
 
     def run_job(self, session):
-        os.makedirs(self.args.output_base_url, exist_ok=True)
         input = self.args.input_base_url + self.args.input
         num_partitions = self.args.num_output_partitions
         boundaries_file_uri = self.args.partition_boundaries_file
