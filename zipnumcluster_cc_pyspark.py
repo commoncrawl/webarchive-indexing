@@ -36,7 +36,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                             default='my_cdx_bucket',
                             help="destination for output")
         parser.add_argument("--partition_boundaries_file", required=True,
-                            help="Full path to a json file containing partition boundaries. if specified, and does not exist, will be created, otherwise, will be used.")
+                            help="Full path to a JSON file containing partition boundaries."
+                            "If specified, and does not exist, will be created, otherwise, will be used.")
         parser.add_argument("--num_lines", type=int, required=False,
                             default=3000,
                             help="number of lines to compress in each chunk")
@@ -228,11 +229,12 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         #rdd = rdd.cache()
 
         boundaries = None
-        ##logging.info(f"Boundaries file: {boundaries_file_uri}")
+        logging.info(f"Boundaries file: {boundaries_file_uri}")
         if boundaries_file_uri and self.check_for_output_file(boundaries_file_uri):
-            ##logging.info(f"Boundaries file found, using it: {boundaries_file_uri}")
+            logging.info(f"Boundaries file found, using it: {boundaries_file_uri}")
             with self.fetch_file(boundaries_file_uri) as f:
-                boundaries = json.load(f)
+                boundaries = list(map(lambda l: tuple(l), json.load(f)))
+
         else:
             # this percent needs to be pretty small, since this collect brings data back to driver...
             # 1/2 percent should be fine
@@ -255,6 +257,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 self.write_output_file(boundaries_file_uri, f)
 
             os.unlink(temp_file_name)
+
+            logging.info(f"Boundaries file created: {boundaries_file_uri}")
         
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
