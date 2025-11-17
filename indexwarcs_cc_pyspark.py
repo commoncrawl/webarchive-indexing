@@ -27,13 +27,11 @@ class IndexWARCJob(CCFileProcessorSparkJob):
 
     def add_arguments(self, parser):
         super(CCFileProcessorSparkJob, self).add_arguments(parser)
-        parser.add_argument("--output_base_url", required=False,
-                            default='my_cdx_bucket',
-                            help="destination for cdx output")
-        
+        parser.add_argument("--output_base_url", required=True,
+                            help="Destination for CDX output.")
         parser.add_argument("--skip-existing", dest='skip_existing', action='store_true',
-                            help="skip processing files that already have CDX")
-    
+                            help="Skip processing files for which the output CDX file already exists.")
+
     def _conv_warc_to_cdx_path(self, warc_path):
         cdx_path = warc_path.replace('crawl-data', 'cc-index/cdx')
         cdx_path = cdx_path.replace('.warc.gz', '.cdx.gz')
@@ -42,7 +40,7 @@ class IndexWARCJob(CCFileProcessorSparkJob):
         return cdx_path
 
     def process_file(self, warc_path, tempfd):
-        
+
         cdx_path = self._conv_warc_to_cdx_path(warc_path)
 
         LOG.info('Indexing WARC: %s', warc_path)
@@ -55,7 +53,7 @@ class IndexWARCJob(CCFileProcessorSparkJob):
 
         with TemporaryFile(mode='w+b',
                            dir=self.args.local_temp_dir) as cdxtemp:
-            
+
             success = False
             with GzipFile(fileobj=cdxtemp, mode='w+b') as cdxfile:
                 try:

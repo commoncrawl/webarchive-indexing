@@ -1,34 +1,33 @@
-import os
-import zlib
 import json
 import logging
+import os
+import re
+import zlib
 
-from typing import Iterator, Tuple, List
+from typing import Iterator, Tuple
 
 import boto3
 import botocore
-import re
 
-from pyspark import StorageLevel
-from pyspark.sql.functions import row_number, concat, lit, col, min as min_, max as max_
-from pyspark.sql.types import StringType, LongType, StructType, StructField
-from pyspark.sql.window import Window
 
 from sparkcc import CCFileProcessorSparkJob
 
 
-LOG = logging.getLogger('ZipNumClusterCdx')
-data_url_pattern = re.compile('^(s3|https?|file|hdfs|s3a|s3n):(?://([^/]*))?/(.*)')
-
-
-# TODO: remove comment lines after testing
-# note: this is LESS strict about partitioning than the original
-# based on my read of the zipnum clustering code, this should be just fine
-# but so far, it's untested. I plan to test it with the index server we use (locally)
-
-
 class ZipNumClusterCdx(CCFileProcessorSparkJob):
+    """Spark job to create a ZipNum Sharded CDX index, see
+    <https://github.com/webrecorder/pywb/wiki/CDX-Index-Format#zipnum-sharded-cdx>.
+    The index is sharded over multiple partitions (default = 300). Each partition file
+    is compressed using gzip, but in chunks of 3000 lines (a configurable number).
+    Every chunk can be read separately, a jump index allows to find the right chunk
+    for a given key in a binary search.
+    """
+
     name = 'ZipNumClusterCdx'
+
+    LOG = logging.getLogger('ZipNumClusterCdx')
+
+    DATA_URL_PATTERN = re.compile('^(s3|https?|file|hdfs|s3a|s3n):(?://([^/]*))?/(.*)')
+
 
     def add_arguments(self, parser):
         super(CCFileProcessorSparkJob,self).add_arguments(parser)
@@ -174,8 +173,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
                     # Index entry with chunk boundaries
                     index_entries.append((
-                        str(chunk_min_surt),  # min surt
-                        str(chunk_max_surt),  # max surt
+                        str(chunk_min_surt),   # min surt
+                        str(chunk_max_surt),   # max surt
                         str(output_filename),  # filename
                         int(partition_id),     # explicit integer conversion
                         int(current_offset),   # explicit integer conversion
@@ -240,7 +239,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             # 1/2 percent should be fine
             samples = rdd.keys().sample(False, 0.005).collect()
             samples.sort()
-            
+
             # Ensure more even distribution by using quantiles
             total_samples = len(samples)
             boundaries = []
@@ -248,25 +247,25 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 idx = (i * total_samples) // num_partitions
                 if idx < len(samples):
                     boundaries.append(samples[idx])
-            
+
             temp_file_name = 'temp_range_boundaries.json'
             with open(temp_file_name, 'w') as f:
                 json.dump(boundaries, f)
-            
+
             with open(temp_file_name, 'rb') as f:
                 self.write_output_file(boundaries_file_uri, f)
 
             os.unlink(temp_file_name)
 
             logging.info(f"Boundaries file created: {boundaries_file_uri}")
-        
+
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
             partitionFunc=lambda k: ZipNumClusterCdx.get_partition_id(k, boundaries)) \
             .mapPartitionsWithIndex(
                 lambda idx, iter: ZipNumClusterCdx.process_partition(idx, iter, num_lines, output_base_url)) \
             .collect()
-    
+
         # loop over the output files and concatenate them into a single final file
         with open('cluster.idx', 'wb') as f:
             for idx_file, _ in rdd:
@@ -283,7 +282,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         # These todo's will remove most of the need for any post processing...
         # TODO: create metadata.yml and put it to output_base_url
         # TODO: remove the "*.idx" files from the output_base_url
-        
+
+
 if __name__ == "__main__":
     job = ZipNumClusterCdx()
     job.run()
