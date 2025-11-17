@@ -32,17 +32,18 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
     def add_arguments(self, parser):
         super(CCFileProcessorSparkJob,self).add_arguments(parser)
         parser.add_argument("--output_base_url", required=True,
-                            default='my_cdx_bucket',
-                            help="destination for output")
+                            help="Output destination.")
         parser.add_argument("--partition_boundaries_file", required=True,
                             help="Full path to a JSON file containing partition boundaries."
                             "If specified, and does not exist, will be created, otherwise, will be used.")
+        parser.add_argument("--temporary_output_base_url", required=True,
+                            help="Temporary output location for per-shard cluster indexes.")
         parser.add_argument("--num_lines", type=int, required=False,
                             default=3000,
-                            help="number of lines to compress in each chunk")
+                            help="Number of lines to compress in each chunk")
         parser.add_argument("--num_output_partitions", type=int, required=False,
                             default=300,
-                            help="number of partitions/shards")
+                            help="Number of partitions/shards")
 
     @staticmethod
     def parse_line(line):
@@ -100,7 +101,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 client = boto3.client('s3')
                 client.upload_fileobj(fd, bucketname, path)
             except botocore.client.ClientError as exception:
-                ZipNumClusterCdx.LOG.error('Failed to write to S3 {}: {}'.format(output_path, exception))
+                ZipNumClusterCdx.LOG.error(
+                    'Failed to write to S3 {}: {}'.format(output_path, exception))
 
         elif scheme == 'http' or scheme == 'https':
             raise ValueError('HTTP/HTTPS output not supported')
@@ -121,7 +123,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                 f.write(fd.read())
 
     @staticmethod
-    def write_partition_with_global_seq(idx, partition_iter, records_per_partition=None, output_base_url=None):
+    def write_partition_with_global_seq(idx: int, partition_iter: list,
+                                        records_per_partition: int, output_base_url: str):
         partition_idx_file = f"idx-{idx:05d}.idx"
 
         # Calculate starting sequence number for this partition
@@ -143,7 +146,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
     @staticmethod
     def process_partition(partition_id: int, partition_iter: Iterator[Tuple[str, Tuple[str, str]]],
-                          num_lines: int, output_base_url: str) -> Iterator[Tuple[str, str, str, int, int, int, int]]:
+                          num_lines: int, output_base_url: str, temporary_output_base_url: str) \
+                          -> Iterator[Tuple[str, str, str, str, int, int, int, int]]:
         """Process partition with chunked compression and chunk boundary tracking"""
         output_filename = f"cdx-{partition_id:05d}.gz"
         index_entries = []
@@ -212,7 +216,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
         os.unlink(output_filename)
 
-        final_files = ZipNumClusterCdx.write_partition_with_global_seq(partition_id, index_entries, num_lines, output_base_url)
+        final_files = ZipNumClusterCdx.write_partition_with_global_seq(
+            partition_id, index_entries, num_lines, temporary_output_base_url)
 
         return final_files
 
@@ -222,12 +227,10 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         boundaries_file_uri = self.args.partition_boundaries_file
         num_lines = self.args.num_lines
         output_base_url = self.args.output_base_url
-        rdd = session.sparkContext.textFile(input).map(self.parse_line).filter(lambda x: x is not None)
+        temporary_output_base_url = self.args.temporary_output_base_url
 
-        # TODO
-        # Cache the RDD with MEMORY_AND_DISK storage level
-        #rdd = rdd.persist(StorageLevel.MEMORY_AND_DISK)
-        #rdd = rdd.cache()
+        rdd = session.sparkContext.textFile(input).map(
+            self.parse_line).filter(lambda x: x is not None)
 
         boundaries = None
         logging.info(f"Boundaries file: {boundaries_file_uri}")
@@ -265,25 +268,21 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             numPartitions=num_partitions,
             partitionFunc=lambda k: ZipNumClusterCdx.get_partition_id(k, boundaries)) \
             .mapPartitionsWithIndex(
-                lambda idx, iter: ZipNumClusterCdx.process_partition(idx, iter, num_lines, output_base_url)) \
+                lambda idx, iter: ZipNumClusterCdx.process_partition(
+                    idx, iter, num_lines, output_base_url, temporary_output_base_url)) \
             .collect()
 
         # loop over the output files and concatenate them into a single final file
         with open('cluster.idx', 'wb') as f:
             for idx_file, _ in rdd:
-                with self.fetch_file(output_base_url + idx_file) as idx_fd:
+                with self.fetch_file(temporary_output_base_url + idx_file) as idx_fd:
                     for line in idx_fd:
                         f.write(line)
-                    # TODO: remove the idx file...
 
         with open('cluster.idx', 'rb') as f:
             self.write_output_file('cluster.idx', f, output_base_url)
 
         os.unlink('cluster.idx')
-
-        # These todo's will remove most of the need for any post processing...
-        # TODO: create metadata.yml and put it to output_base_url
-        # TODO: remove the "*.idx" files from the output_base_url
 
 
 if __name__ == "__main__":
