@@ -24,8 +24,6 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
     name = 'ZipNumClusterCdx'
 
-    LOG = logging.getLogger('ZipNumClusterCdx')
-
     DATA_URL_PATTERN = re.compile('^(s3|https?|file|hdfs|s3a|s3n):(?://([^/]*))?/(.*)')
 
 
@@ -34,8 +32,9 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         parser.add_argument("--output_base_url", required=True,
                             help="Output destination.")
         parser.add_argument("--partition_boundaries_file", required=True,
-                            help="Full path to a JSON file containing partition boundaries."
-                            "If specified, and does not exist, will be created, otherwise, will be used.")
+                            help="Full path to a JSON file containing partition boundaries. "
+                            "If specified, and does not exist, will be created, otherwise, "
+                            "it will be used.")
         parser.add_argument("--temporary_output_base_url", required=True,
                             help="Temporary output location for per-shard cluster indexes.")
         parser.add_argument("--num_lines", type=int, required=False,
@@ -93,25 +92,27 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         else:
             # keep local file paths as is
             path = uri
+            scheme = 'file'
+            netloc = None
 
-        if scheme in ['s3', 's3a', 's3n']:
+        if scheme in {'s3', 's3a', 's3n'}:
             bucketname = netloc
             output_path = path
             try:
                 client = boto3.client('s3')
                 client.upload_fileobj(fd, bucketname, path)
             except botocore.client.ClientError as exception:
-                ZipNumClusterCdx.LOG.error(
+                logging.error(
                     'Failed to write to S3 {}: {}'.format(output_path, exception))
 
-        elif scheme == 'http' or scheme == 'https':
+        elif scheme in {'http', 'https'}:
             raise ValueError('HTTP/HTTPS output not supported')
 
         elif scheme == 'hdfs':
             raise NotImplementedError('HDFS output not implemented')
 
         else:
-            ZipNumClusterCdx.LOG.info('Writing local file {}'.format(uri))
+            logging.info('Writing local file {}'.format(uri))
             if scheme == 'file':
                 # must be an absolute path
                 uri = os.path.join('/', path)
@@ -130,7 +131,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         # Calculate starting sequence number for this partition
         start_seq = (idx * records_per_partition) + 1 if records_per_partition else 1
 
-        with open(partition_idx_file, 'w') as f:
+        with open(partition_idx_file, 'w', encoding="utf-8") as f:
             seq = start_seq
             for record in partition_iter:
                 min_surt, _, min_surt_timestamp, filename, _, offset, length, _ = record
@@ -157,6 +158,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         current_chunk = []
         chunk_min_surt = None
         chunk_max_surt = None
+        chunk_min_timestamp = None
 
         with open(output_filename, 'wb') as f:
             for (surt_key, timestamp), json_data in partition_iter:
@@ -222,25 +224,26 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         return final_files
 
     def run_job(self, session):
-        input = self.args.input_base_url + self.args.input
+        input_url = self.args.input_base_url + self.args.input
         num_partitions = self.args.num_output_partitions
         boundaries_file_uri = self.args.partition_boundaries_file
         num_lines = self.args.num_lines
         output_base_url = self.args.output_base_url
         temporary_output_base_url = self.args.temporary_output_base_url
 
-        rdd = session.sparkContext.textFile(input).map(
+        rdd = session.sparkContext.textFile(input_url).map(
             self.parse_line).filter(lambda x: x is not None)
 
         boundaries = None
-        logging.info(f"Boundaries file: {boundaries_file_uri}")
+        self.get_logger(session).info(f"Boundaries file: {boundaries_file_uri}")
         if boundaries_file_uri and self.check_for_output_file(boundaries_file_uri):
-            logging.info(f"Boundaries file found, using it: {boundaries_file_uri}")
+            self.get_logger(session).info(f"Boundaries file found, using it: {boundaries_file_uri}")
             with self.fetch_file(boundaries_file_uri) as f:
                 boundaries = list(map(lambda l: tuple(l), json.load(f)))
 
         else:
-            # this percent needs to be pretty small, since this collect brings data back to driver...
+            # The percentage needs to be pretty small, since the collect
+            # brings data back to the driver...
             # 1/2 percent should be fine
             samples = rdd.keys().sample(False, 0.005).collect()
             samples.sort()
@@ -254,7 +257,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                     boundaries.append(samples[idx])
 
             temp_file_name = 'temp_range_boundaries.json'
-            with open(temp_file_name, 'w') as f:
+            with open(temp_file_name, 'w', encoding="utf-8") as f:
                 json.dump(boundaries, f)
 
             with open(temp_file_name, 'rb') as f:
@@ -262,7 +265,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
             os.unlink(temp_file_name)
 
-            logging.info(f"Boundaries file created: {boundaries_file_uri}")
+            self.get_logger(session).info(
+                f"Boundaries file created: {boundaries_file_uri}")
 
         rdd = rdd.repartitionAndSortWithinPartitions(
             numPartitions=num_partitions,
