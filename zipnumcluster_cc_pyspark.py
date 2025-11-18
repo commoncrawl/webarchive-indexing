@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import os
@@ -24,6 +25,10 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
     name = 'ZipNumClusterCdx'
 
+    input_descr = """Glob pattern of input CDX files, e.g., file:///path/*/*.cdx.gz
+(HDFS-compatible filesystems only: hdfs://, s3a://, file://)."""
+    output_descr = "Ignored but required (can be empty, no output table is produced)."
+
     DATA_URL_PATTERN = re.compile('^(s3|https?|file|hdfs|s3a|s3n):(?://([^/]*))?/(.*)')
 
 
@@ -43,6 +48,10 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         parser.add_argument("--num_output_partitions", type=int, required=False,
                             default=300,
                             help="Number of partitions/shards")
+        # suppress help for ignored arguments
+        parser.add_argument("--output_format", help=argparse.SUPPRESS)
+        parser.add_argument("--output_compression", help=argparse.SUPPRESS)
+        parser.add_argument("--output_option", help=argparse.SUPPRESS)
 
     @staticmethod
     def parse_line(line):
