@@ -108,7 +108,7 @@ SPARK_EXTRA_OPTS=""
 
 NUM_EXECUTORS=${NUM_EXECUTORS:-1}
 EXECUTOR_CORES=${EXECUTOR_CORES:-2}
-# input partitions for the WARC-to-CDX stop
+# input partitions for the WARC-to-CDX step
 NUM_WARC_INPUT_PARTITIONS=${NUM_WARC_INPUT_PARTITIONS:-10}
 
 export LC_ALL=C

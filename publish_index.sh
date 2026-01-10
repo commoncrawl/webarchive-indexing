@@ -25,6 +25,16 @@ if ! [ -e "$YEARWEEK-metadata.yaml" ]; then
 fi
 aws s3 cp "$YEARWEEK-metadata.yaml" "s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/metadata.yaml"
 
+
+echo "Prepare and install cluster.idx if not yet done"
+# Note: This is required for mrjob-based implementation, but not for that based on cc-pyspark.
+#       The jobs zipnumcluster_cc_pyspark.py already does the concatenation of the 300 per-partition
+#       *.idx files into the cluster.idx
+if aws s3 ls s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/cluster.idx; then
+	echo "cluster.idx already exists on s3://commoncrawl/cc-index/collections/CC-MAIN-$YEARWEEK/indexes/"
+	exit 0
+fi
+
 test -d "cdx-$YEARWEEK" || mkdir "cdx-$YEARWEEK"
 cd "cdx-$YEARWEEK"
 
