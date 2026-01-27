@@ -3,6 +3,10 @@ WebArchive URL Indexing
 
 This project contains several scripts (MapReduce jobs) for generating URL indexes of web archive collections, usually containing large number of WARC (or ARC) files. The scripts are designed to ran on Hadoop or Amazon EMR to process terabytes or even petabytes of web archive content. Additionally, thanks to flexibility of the MRJob library, the scripts can also run on a local machine to build an index cluster.
 
+The indexer was originally implemented based on [mrjob](//github.com/Yelp/mrjob). Because mrjob is no longer maintained, it was ported to PySpark (based on [cc-pyspark](//github.com/commoncrawl/cc-pyspark/)) in 2024/2025. For running the Spark jobs, see [run_index_ccpyspark.sh](run_index_ccpyspark.sh) and [requirements_ccpyspark.txt](requirements_ccpyspark.txt). See also the documentation of [cc-pyspark](//github.com/commoncrawl/cc-pyspark/).
+
+The description below documents how to run the MapReduce jobs.
+
 ## Initial Setup and Usage
 
 Python 3 is required - see the branch `python-2.7` for a previous version running on Python 2.7 (not maintained anymore).

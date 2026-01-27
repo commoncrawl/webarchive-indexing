@@ -1,0 +1,3 @@
+boto3
+# PyWB is required to index WARC files, running indexwarcs_cc_pyspark.py
+pywb
