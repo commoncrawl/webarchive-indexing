@@ -161,7 +161,8 @@ $SPARK_HOME/bin/spark-submit \
     --conf spark.serializer=org.apache.spark.serializer.KryoSerializer \
     --conf spark.task.maxFailures=5 \
     --conf spark.executor.memory=$EXECUTOR_MEM \
-    --conf spark.driver.memory=3g \
+    --conf spark.driver.memory=6g \
+    --conf spark.driver.maxResultSize=4g \
     --conf spark.core.connection.ack.wait.timeout=600s \
     --conf spark.network.timeout=300s \
     --conf spark.shuffle.io.maxRetries=50 \
