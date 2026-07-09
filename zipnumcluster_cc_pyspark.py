@@ -5,7 +5,7 @@ import os
 import re
 import zlib
 
-from typing import Iterator, Tuple
+from typing import Iterator, Set, Tuple
 
 import boto3
 import botocore
@@ -48,6 +48,11 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         parser.add_argument("--num_output_partitions", type=int, required=False,
                             default=300,
                             help="Number of partitions/shards")
+        parser.add_argument("--cdx_output_remove_fields", required=False,
+                            help="Comma-separated list of CDXJ output fields to be removed.")
+        parser.add_argument("--cdx_output_fields", required=False,
+                            help="Comma-separated list of CDXJ output fields. "
+                            "Fields not in this list are removed from output records.")
         # suppress help for ignored arguments
         parser.add_argument("--output_format", help=argparse.SUPPRESS)
         parser.add_argument("--output_compression", help=argparse.SUPPRESS)
@@ -63,6 +68,20 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             return ((surt_key, timestamp), json_str)
         except:
             return None
+
+    @staticmethod
+    def remove_cdx_fields(value: Tuple[Tuple[str, str], str], remove_fields: Set[str]) -> str:
+        data = json.loads(value[1])
+        for f in remove_fields:
+            if f in data:
+                del data[f]
+        return (value[0], json.dumps(data))
+
+    @staticmethod
+    def keep_only_cdx_fields(value: Tuple[Tuple[str, str], str], keep_fields: Set[str]) -> str:
+        data = json.loads(value[1])
+        data = {k: v for k, v in data.items() if k in keep_fields}
+        return (value[0], json.dumps(data))
 
     @staticmethod
     def get_partition_id(key: str, boundaries_data) -> int:
@@ -242,6 +261,22 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
 
         rdd = session.sparkContext.textFile(input_url).map(
             self.parse_line).filter(lambda x: x is not None)
+
+        if self.args.cdx_output_remove_fields:
+            # CDXJ fields to remove
+            remove_fields = set(
+                filter(len, map(str.strip, self.args.cdx_output_remove_fields.split(','))))
+            if remove_fields:
+                self.get_logger(session).info("Filtering CDXJ fields, removing: {}".format(remove_fields))
+                rdd = rdd.map(lambda x: ZipNumClusterCdx.remove_cdx_fields(x, remove_fields))
+
+        if self.args.cdx_output_fields:
+            # CDXJ fields to keep only
+            fields = set(
+                filter(len, map(str.strip, self.args.cdx_output_fields.split(','))))
+            if fields:
+                self.get_logger(session).info("Filtering CDXJ fields, keep only: {}".format(fields))
+                rdd = rdd.map(lambda x: ZipNumClusterCdx.keep_only_cdx_fields(x, fields))
 
         boundaries = None
         self.get_logger(session).info(f"Boundaries file: {boundaries_file_uri}")
