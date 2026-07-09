@@ -260,7 +260,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         temporary_output_base_url = self.args.temporary_output_base_url
 
         rdd = session.sparkContext.textFile(input_url).map(
-            self.parse_line).filter(lambda x: x is not None)
+            ZipNumClusterCdx.parse_line).filter(lambda x: x is not None)
 
         if self.args.cdx_output_remove_fields:
             # CDXJ fields to remove
@@ -283,7 +283,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         if boundaries_file_uri and self.check_for_output_file(boundaries_file_uri):
             self.get_logger(session).info(f"Boundaries file found, using it: {boundaries_file_uri}")
             with self.fetch_file(boundaries_file_uri) as f:
-                boundaries = list(map(lambda l: tuple(l), json.load(f)))
+                boundaries = list(map(tuple, json.load(f)))
 
         else:
             # The percentage needs to be pretty small, since the collect
@@ -316,8 +316,8 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             numPartitions=num_partitions,
             partitionFunc=lambda k: ZipNumClusterCdx.get_partition_id(k, boundaries)) \
             .mapPartitionsWithIndex(
-                lambda idx, iter: ZipNumClusterCdx.process_partition(
-                    idx, iter, num_lines, output_base_url, temporary_output_base_url)) \
+                lambda idx, _iter: ZipNumClusterCdx.process_partition(
+                    idx, _iter, num_lines, output_base_url, temporary_output_base_url)) \
             .collect()
 
         # loop over the output files and concatenate them into a single final file
@@ -328,7 +328,7 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
                         f.write(line)
 
         with open('cluster.idx', 'rb') as f:
-            self.write_output_file('cluster.idx', f, output_base_url)
+            ZipNumClusterCdx.write_output_file('cluster.idx', f, output_base_url)
 
         os.unlink('cluster.idx')
 
