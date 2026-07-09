@@ -62,6 +62,7 @@ WARC_CDX="s3a://$WARC_CDX_BUCKET/$CRAWL/cdx/segments/*/*/*.cdx.gz"
 ### ZipNum definitions
 ZIPNUM_N_LINES=3000
 ZIPNUM_N_PARTITIONS=300
+ZIPNUM_CDXJ_FIELDS="digest,filename,length,mime,mime-detected,offset,recordid,redirect,status,url,truncated,charset,languages"
 
 # SPLIT_FILE could be reused from previous crawl with similar distribution of URLs, see REUSE_SPLIT_FILE
 SPLIT_FILE="s3a://$WARC_CDX_BUCKET/$CRAWL/partition_boundaries.json"
@@ -183,6 +184,7 @@ $SPARK_HOME/bin/spark-submit \
     --partition_boundaries_file="$SPLIT_FILE" \
     --num_lines=$ZIPNUM_N_LINES \
     --num_output_partitions=$ZIPNUM_N_PARTITIONS \
+    --cdx_output_fields="$ZIPNUM_CDXJ_FIELDS" \
     "$WARC_CDX" ""
 
 
