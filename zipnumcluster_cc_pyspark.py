@@ -48,11 +48,14 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
         parser.add_argument("--num_output_partitions", type=int, required=False,
                             default=300,
                             help="Number of partitions/shards")
-        parser.add_argument("--cdx_output_remove_fields", required=False,
-                            help="Comma-separated list of CDXJ output fields to be removed.")
-        parser.add_argument("--cdx_output_fields", required=False,
-                            help="Comma-separated list of CDXJ output fields. "
-                            "Fields not in this list are removed from output records.")
+        output_fields_group = parser.add_mutually_exclusive_group()
+        output_fields_group.add_argument(
+            "--cdx_output_remove_fields", required=False,
+            help="Comma-separated list of CDXJ output fields to be removed.")
+        output_fields_group.add_argument(
+            "--cdx_output_fields", required=False,
+            help="Comma-separated list of CDXJ output fields. "
+            "Fields not in this list are removed from output records.")
         # suppress help for ignored arguments
         parser.add_argument("--output_format", help=argparse.SUPPRESS)
         parser.add_argument("--output_compression", help=argparse.SUPPRESS)
@@ -267,15 +270,16 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             remove_fields = set(
                 filter(len, map(str.strip, self.args.cdx_output_remove_fields.split(','))))
             if remove_fields:
-                self.get_logger(session).info("Filtering CDXJ fields, removing: {}".format(remove_fields))
+                self.get_logger(session).info(
+                    "Filtering CDXJ fields, removing: {}".format(remove_fields))
                 rdd = rdd.map(lambda x: ZipNumClusterCdx.remove_cdx_fields(x, remove_fields))
-
-        if self.args.cdx_output_fields:
+        elif self.args.cdx_output_fields:
             # CDXJ fields to keep only
             fields = set(
                 filter(len, map(str.strip, self.args.cdx_output_fields.split(','))))
             if fields:
-                self.get_logger(session).info("Filtering CDXJ fields, keep only: {}".format(fields))
+                self.get_logger(session).info(
+                    "Filtering CDXJ fields, keep only: {}".format(fields))
                 rdd = rdd.map(lambda x: ZipNumClusterCdx.keep_only_cdx_fields(x, fields))
 
         boundaries = None
