@@ -73,18 +73,20 @@ class ZipNumClusterCdx(CCFileProcessorSparkJob):
             return None
 
     @staticmethod
-    def remove_cdx_fields(value: Tuple[Tuple[str, str], str], remove_fields: Set[str]) -> str:
+    def remove_cdx_fields(value: Tuple[Tuple[str, str], str],
+                          remove_fields: Set[str]) -> Tuple[Tuple[str, str], str]:
         data = json.loads(value[1])
         for f in remove_fields:
             if f in data:
                 del data[f]
-        return (value[0], json.dumps(data))
+        return value[0], json.dumps(data)
 
     @staticmethod
-    def keep_only_cdx_fields(value: Tuple[Tuple[str, str], str], keep_fields: Set[str]) -> str:
+    def keep_only_cdx_fields(value: Tuple[Tuple[str, str], str],
+                             keep_fields: Set[str]) -> Tuple[Tuple[str, str], str]:
         data = json.loads(value[1])
         data = {k: v for k, v in data.items() if k in keep_fields}
-        return (value[0], json.dumps(data))
+        return value[0], json.dumps(data)
 
     @staticmethod
     def get_partition_id(key: str, boundaries_data) -> int:
